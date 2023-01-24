@@ -30,7 +30,7 @@ impl Table {
             Self::TypeIds => "type_ids",
             Self::DataTypes => "data_types",
             Self::PropertyTypes => "property_types",
-            Self::EntityTypes => "entity_types",
+            Self::EntityTypes => "owned_entity_types",
             Self::Entities => "entities",
             Self::PropertyTypeDataTypeReferences => "property_type_data_type_references",
             Self::PropertyTypePropertyTypeReferences => "property_type_property_type_references",

@@ -360,9 +360,9 @@ mod tests {
             &compiler,
             r#"
             SELECT *
-            FROM "entity_types" AS "entity_types_0_0_0"
+            FROM "owned_entity_types" AS "owned_entity_types_0_0_0"
             INNER JOIN "entity_type_property_type_references" AS "entity_type_property_type_references_0_1_0"
-              ON "entity_type_property_type_references_0_1_0"."source_entity_type_version_id" = "entity_types_0_0_0"."version_id"
+              ON "entity_type_property_type_references_0_1_0"."source_entity_type_version_id" = "owned_entity_types_0_0_0"."version_id"
             INNER JOIN "property_types" AS "property_types_0_2_0"
               ON "property_types_0_2_0"."version_id" = "entity_type_property_type_references_0_1_0"."target_property_type_version_id"
             WHERE "property_types_0_2_0"."schema"->>'title' = $1
@@ -393,18 +393,18 @@ mod tests {
             &compiler,
             r#"
             SELECT *
-            FROM "entity_types" AS "entity_types_0_0_0"
+            FROM "owned_entity_types" AS "owned_entity_types_0_0_0"
             INNER JOIN "entity_type_entity_type_references" AS "entity_type_entity_type_references_0_1_0"
-              ON "entity_type_entity_type_references_0_1_0"."source_entity_type_version_id" = "entity_types_0_0_0"."version_id"
-            INNER JOIN "entity_types" AS "entity_types_0_2_0"
-              ON "entity_types_0_2_0"."version_id" = "entity_type_entity_type_references_0_1_0"."target_entity_type_version_id"
+              ON "entity_type_entity_type_references_0_1_0"."source_entity_type_version_id" = "owned_entity_types_0_0_0"."version_id"
+            INNER JOIN "owned_entity_types" AS "owned_entity_types_0_2_0"
+              ON "owned_entity_types_0_2_0"."version_id" = "entity_type_entity_type_references_0_1_0"."target_entity_type_version_id"
             INNER JOIN "entity_type_entity_type_references" AS "entity_type_entity_type_references_0_3_0"
-              ON "entity_type_entity_type_references_0_3_0"."source_entity_type_version_id" = "entity_types_0_2_0"."version_id"
-            INNER JOIN "entity_types" AS "entity_types_0_4_0"
-              ON "entity_types_0_4_0"."version_id" = "entity_type_entity_type_references_0_3_0"."target_entity_type_version_id"
-            WHERE jsonb_extract_path("entity_types_0_0_0"."schema", 'links', "entity_types_0_2_0"."schema"->>'$id') IS NOT NULL
-              AND jsonb_extract_path("entity_types_0_2_0"."schema", 'links', "entity_types_0_4_0"."schema"->>'$id') IS NOT NULL
-              AND "entity_types_0_4_0"."schema"->>'title' = $1
+              ON "entity_type_entity_type_references_0_3_0"."source_entity_type_version_id" = "owned_entity_types_0_2_0"."version_id"
+            INNER JOIN "owned_entity_types" AS "owned_entity_types_0_4_0"
+              ON "owned_entity_types_0_4_0"."version_id" = "entity_type_entity_type_references_0_3_0"."target_entity_type_version_id"
+            WHERE jsonb_extract_path("owned_entity_types_0_0_0"."schema", 'links', "owned_entity_types_0_2_0"."schema"->>'$id') IS NOT NULL
+              AND jsonb_extract_path("owned_entity_types_0_2_0"."schema", 'links', "owned_entity_types_0_4_0"."schema"->>'$id') IS NOT NULL
+              AND "owned_entity_types_0_4_0"."schema"->>'title' = $1
             "#,
             &[&"Friend Of"],
         );
@@ -430,14 +430,14 @@ mod tests {
             &compiler,
             r#"
             SELECT *
-            FROM "entity_types" AS "entity_types_0_0_0"
+            FROM "owned_entity_types" AS "owned_entity_types_0_0_0"
             INNER JOIN "entity_type_entity_type_references" AS "entity_type_entity_type_references_0_1_0"
-              ON "entity_type_entity_type_references_0_1_0"."source_entity_type_version_id" = "entity_types_0_0_0"."version_id"
-            INNER JOIN "entity_types" AS "entity_types_0_2_0"
-              ON "entity_types_0_2_0"."version_id" = "entity_type_entity_type_references_0_1_0"."target_entity_type_version_id"
+              ON "entity_type_entity_type_references_0_1_0"."source_entity_type_version_id" = "owned_entity_types_0_0_0"."version_id"
+            INNER JOIN "owned_entity_types" AS "owned_entity_types_0_2_0"
+              ON "owned_entity_types_0_2_0"."version_id" = "entity_type_entity_type_references_0_1_0"."target_entity_type_version_id"
             INNER JOIN "type_ids" AS "type_ids_0_3_0"
-              ON "type_ids_0_3_0"."version_id" = "entity_types_0_2_0"."version_id"
-            WHERE jsonb_contains("entity_types_0_0_0"."schema"->'allOf', jsonb_build_array(jsonb_build_object('$ref', "entity_types_0_2_0"."schema"->>'$id'))) IS NOT NULL
+              ON "type_ids_0_3_0"."version_id" = "owned_entity_types_0_2_0"."version_id"
+            WHERE jsonb_contains("owned_entity_types_0_0_0"."schema"->'allOf', jsonb_build_array(jsonb_build_object('$ref', "owned_entity_types_0_2_0"."schema"->>'$id'))) IS NOT NULL
               AND "type_ids_0_3_0"."base_uri" = $1
             "#,
             &[&"https://blockprotocol.org/@blockprotocol/types/entity-type/link/"],

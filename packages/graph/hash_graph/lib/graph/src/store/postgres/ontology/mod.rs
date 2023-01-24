@@ -29,6 +29,6 @@ impl OntologyDatabaseType for PropertyType {
 
 impl OntologyDatabaseType for EntityType {
     fn table() -> &'static str {
-        "entity_types"
+        "owned_entity_types"
     }
 }
