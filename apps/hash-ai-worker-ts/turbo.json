@@ -1,0 +1,5 @@
+{
+  "extends": ["//"],
+  // TODO: fill out this file
+  "pipeline": {}
+}
