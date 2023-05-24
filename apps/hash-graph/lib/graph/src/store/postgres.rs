@@ -14,6 +14,7 @@ use type_system::{
     url::VersionedUrl, DataTypeReference, EntityType, EntityTypeReference, PropertyType,
     PropertyTypeReference,
 };
+use uuid::Uuid;
 
 pub use self::pool::{AsClient, PostgresStorePool};
 use crate::{
@@ -31,9 +32,10 @@ use crate::{
             VersionedUrlAlreadyExists,
         },
         postgres::ontology::{OntologyDatabaseType, OntologyId},
-        AccountStore, BaseUrlAlreadyExists, ConflictBehavior, InsertionError, QueryError,
+        AccountStore, BaseUrlAlreadyExists, ConflictBehavior, InsertionError, QueryError, Record,
         StoreError, UpdateError,
     },
+    subgraph::Subgraph,
 };
 #[cfg(hash_graph_test_environment)]
 use crate::{
@@ -45,7 +47,32 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct TraversalContext;
+pub struct TraversalContext {
+    pub data_type_ids: Vec<Uuid>,
+    pub property_type_ids: Vec<Uuid>,
+}
+
+impl TraversalContext {
+    pub async fn load_vertices<C: AsClient>(
+        self,
+        store: &PostgresStore<C>,
+        subgraph: &mut Subgraph,
+    ) -> Result<(), QueryError> {
+        let time_axis = subgraph.temporal_axes.resolved.variable_time_axis();
+
+        for data_type in store.read_data_types_by_ids(&self.data_type_ids).await? {
+            subgraph.insert_vertex(&data_type.vertex_id(time_axis), data_type);
+        }
+        for property_types in store
+            .read_property_types_by_ids(&self.data_type_ids)
+            .await?
+        {
+            subgraph.insert_vertex(&property_types.vertex_id(time_axis), property_types);
+        }
+
+        Ok(())
+    }
+}
 
 /// A Postgres-backed store
 pub struct PostgresStore<C> {

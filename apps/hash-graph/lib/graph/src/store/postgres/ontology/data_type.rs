@@ -1,16 +1,19 @@
-use std::borrow::Borrow;
+use std::{borrow::Borrow, collections::HashSet};
 
 use async_trait::async_trait;
 use error_stack::{IntoReport, Result, ResultExt};
 use type_system::DataType;
+use uuid::Uuid;
 
 use crate::{
-    ontology::{DataTypeWithMetadata, OntologyElementMetadata},
+    identifier::ontology::OntologyTypeRecordId,
+    ontology::{DataTypeQueryPath, DataTypeWithMetadata, OntologyElementMetadata},
     provenance::RecordCreatedById,
     store::{
         crud::Read,
         error::DeletionError,
         postgres::{ontology::OntologyId, TraversalContext},
+        query::{Filter, FilterExpression, ParameterList},
         AsClient, ConflictBehavior, DataTypeStore, InsertionError, PostgresStore, QueryError,
         Record, UpdateError,
     },
@@ -21,6 +24,21 @@ use crate::{
 };
 
 impl<C: AsClient> PostgresStore<C> {
+    pub(crate) async fn read_data_types_by_ids(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<Vec<DataTypeWithMetadata>, QueryError> {
+        <Self as Read<DataTypeWithMetadata>>::read_vec(
+            self,
+            &Filter::<DataTypeWithMetadata>::In(
+                FilterExpression::Path(DataTypeQueryPath::OntologyId),
+                ParameterList::OntologyIds(ids),
+            ),
+            None,
+        )
+        .await
+    }
+
     /// Internal method to read a [`DataTypeWithMetadata`] into a [`TraversalContext`].
     ///
     /// This is used to recursively resolve a type, so the result can be reused.
@@ -122,6 +140,8 @@ impl<C: AsClient> DataTypeStore for PostgresStore<C> {
             subgraph.roots.insert(vertex_id.clone().into());
         }
 
+        let mut traversal_context = TraversalContext::default();
+
         // TODO: We currently pass in the subgraph as mutable reference, thus we cannot borrow the
         //       vertices and have to `.collect()` the keys.
         self.traverse_data_types(
@@ -137,10 +157,12 @@ impl<C: AsClient> DataTypeStore for PostgresStore<C> {
                     )
                 })
                 .collect(),
-            &mut TraversalContext,
+            &mut traversal_context,
             &mut subgraph,
         )
         .await?;
+
+        traversal_context.load_vertices(self, &mut subgraph).await?;
 
         Ok(subgraph)
     }

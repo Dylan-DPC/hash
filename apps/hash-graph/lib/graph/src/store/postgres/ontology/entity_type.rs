@@ -317,6 +317,8 @@ impl<C: AsClient> EntityTypeStore for PostgresStore<C> {
             subgraph.roots.insert(vertex_id.clone().into());
         }
 
+        let mut traversal_context = TraversalContext::default();
+
         // TODO: We currently pass in the subgraph as mutable reference, thus we cannot borrow the
         //       vertices and have to `.collect()` the keys.
         self.traverse_entity_types(
@@ -332,10 +334,12 @@ impl<C: AsClient> EntityTypeStore for PostgresStore<C> {
                     )
                 })
                 .collect(),
-            &mut TraversalContext,
+            &mut traversal_context,
             &mut subgraph,
         )
         .await?;
+
+        traversal_context.load_vertices(self, &mut subgraph).await?;
 
         Ok(subgraph)
     }

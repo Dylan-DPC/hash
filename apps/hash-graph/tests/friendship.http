@@ -851,29 +851,27 @@ Content-Type: application/json
 
 {
   "filter": {
-    "startsWith": [
-      { "path": ["versionedUrl"] },
-      { "parameter": "http://localhost:3000/@alice" }
+    "all": [
     ]
   },
   "graphResolveDepths": {
     "inheritsFrom": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsValuesOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsPropertiesOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsLinksOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsLinkDestinationsOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "isOfType": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "hasLeftEntity": {
       "incoming": 0,
