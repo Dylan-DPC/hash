@@ -1,104 +1,238 @@
 mod read;
 
-use std::mem;
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use error_stack::{IntoReport, Report, Result, ResultExt};
 use tokio_postgres::{error::SqlState, GenericClient};
-use type_system::url::VersionedUrl;
+use type_system::url::{BaseUrl, VersionedUrl};
 use uuid::Uuid;
 
 use crate::{
     identifier::{
         knowledge::{EntityEditionId, EntityId, EntityRecordId, EntityTemporalMetadata},
-        time::{DecisionTime, LeftClosedTemporalInterval, Timestamp},
+        ontology::OntologyTypeVersion,
+        time::{DecisionTime, RightBoundedTemporalInterval, TemporalTagged, TimeAxis, Timestamp},
     },
-    knowledge::{Entity, EntityLinkOrder, EntityMetadata, EntityProperties, EntityUuid, LinkData},
-    ontology::EntityTypeWithMetadata,
+    knowledge::{
+        Entity, EntityLinkOrder, EntityMetadata, EntityProperties, EntityQueryPath, EntityUuid,
+        LinkData,
+    },
     provenance::{OwnedById, ProvenanceMetadata, RecordCreatedById},
     store::{
         crud::Read,
         error::{DeletionError, EntityDoesNotExist, RaceConditionOnUpdate},
-        postgres::TraversalContext,
-        query::Filter,
+        postgres::{
+            query::{ForeignKeyReference, ReferenceTable, Table, Transpile},
+            TraversalContext,
+        },
+        query::{Filter, FilterExpression, ParameterList},
         AsClient, EntityStore, InsertionError, PostgresStore, QueryError, Record, UpdateError,
     },
     subgraph::{
         edges::{EdgeDirection, GraphResolveDepths, KnowledgeGraphEdgeKind, SharedEdgeKind},
-        identifier::{EntityIdWithInterval, EntityVertexId},
+        identifier::{EntityIdWithInterval, EntityTypeVertexId, EntityVertexId},
         query::StructuralQuery,
-        temporal_axes::{QueryTemporalAxes, VariableAxis},
+        temporal_axes::{PinnedAxis, QueryTemporalAxes, VariableAxis},
         Subgraph,
     },
 };
 
 impl<C: AsClient> PostgresStore<C> {
-    /// # Errors
-    ///
-    /// Returns an error if querying the entities with the specified edge fails.
-    #[expect(clippy::too_many_arguments)]
-    pub async fn traverse_knowledge_graph_edge(
+    pub(crate) async fn read_entities_by_ids(
         &self,
-        entity_vertex_id: EntityVertexId,
-        entity_interval: LeftClosedTemporalInterval<VariableAxis>,
-        edge_kind: KnowledgeGraphEdgeKind,
-        edge_direction: EdgeDirection,
-        graph_resolve_depths: GraphResolveDepths,
+        vertex_ids: impl IntoIterator<Item = EntityEditionId> + Send,
         temporal_axes: &QueryTemporalAxes,
-        _traversal_context: &mut TraversalContext,
-        subgraph: &mut Subgraph,
+    ) -> Result<Vec<Entity>, QueryError> {
+        let ids = vertex_ids
+            .into_iter()
+            .map(|id| id.as_uuid())
+            .collect::<Vec<_>>();
+
+        <Self as Read<Entity>>::read_vec(
+            self,
+            &Filter::<Entity>::In(
+                FilterExpression::Path(EntityQueryPath::EditionId),
+                ParameterList::Uuid(&ids),
+            ),
+            Some(temporal_axes),
+        )
+        .await
+    }
+
+    pub(crate) async fn read_shared_edges(
+        &self,
+        owned_by_ids: &[OwnedById],
+        entity_uuids: &[EntityUuid],
+        intervals: &[RightBoundedTemporalInterval<VariableAxis>],
+        pinned: Timestamp<PinnedAxis>,
+        variable_axis: TimeAxis,
+    ) -> Result<impl Iterator<Item = (EntityVertexId, VersionedUrl, usize)>, QueryError> {
+        let (pinned_axis_column, variable_axis_column) = match variable_axis {
+            TimeAxis::DecisionTime => ("transaction_time", "decision_time"),
+            TimeAxis::TransactionTime => ("decision_time", "transaction_time"),
+        };
+
+        Ok(self
+            .client
+            .as_client()
+            .query(
+                &format!(
+                    r#"
+                        SELECT
+                            entity_temporal_metadata.owned_by_id,
+                            entity_temporal_metadata.entity_uuid,
+                            lower(entity_temporal_metadata.{variable_axis_column}),
+                            ontology_ids.base_url,
+                            ontology_ids.version,
+                            filter.idx
+                        FROM entity_is_of_type
+
+                        JOIN entity_temporal_metadata
+                          ON entity_temporal_metadata.entity_edition_id
+                             = entity_is_of_type.entity_edition_id
+                         AND entity_temporal_metadata.{pinned_axis_column} @> $4::timestamptz
+
+                        JOIN unnest($1::uuid[], $2::uuid[], $3::tstzrange[])
+                             WITH ORDINALITY AS filter(owned_by_id, entity_uuid, interval, idx)
+                          ON filter.owned_by_id = entity_temporal_metadata.owned_by_id
+                         AND filter.entity_uuid = entity_temporal_metadata.entity_uuid
+                         AND filter.interval && entity_temporal_metadata.{variable_axis_column}
+
+                        JOIN ontology_ids
+                          ON entity_is_of_type.entity_type_ontology_id = ontology_ids.ontology_id;
+                    "#
+                ),
+                &[&owned_by_ids, &entity_uuids, &intervals, &pinned],
+            )
+            .await
+            .into_report()
+            .change_context(QueryError)?
+            .into_iter()
+            .map(|row| {
+                let source_vertex_id = EntityVertexId {
+                    base_id: EntityId {
+                        owned_by_id: row.get(0),
+                        entity_uuid: row.get(1),
+                    },
+                    revision_id: row.get::<_, Timestamp<()>>(2).cast(),
+                };
+                let target_vertex_id = VersionedUrl {
+                    base_url: BaseUrl::new(row.get(3)).expect("invalid URL"),
+                    version: row.get::<_, OntologyTypeVersion>(4).inner(),
+                };
+                let index = usize::try_from(row.get::<_, i64>(5) - 1).expect("invalid index");
+                (source_vertex_id, target_vertex_id, index)
+            }))
+    }
+
+    pub(crate) async fn read_entity_edges(
+        &self,
+        owned_by_ids: &[OwnedById],
+        entity_uuids: &[EntityUuid],
+        intervals: &[RightBoundedTemporalInterval<VariableAxis>],
+        pinned: Timestamp<PinnedAxis>,
+        variable_axis: TimeAxis,
+        reference_table: ReferenceTable,
     ) -> Result<
-        impl Iterator<Item = (EntityVertexId, GraphResolveDepths, QueryTemporalAxes)>,
+        impl Iterator<
+            Item = (
+                EntityVertexId,
+                EntityVertexId,
+                EntityIdWithInterval,
+                EntityEditionId,
+                RightBoundedTemporalInterval<VariableAxis>,
+                usize,
+            ),
+        >,
         QueryError,
     > {
-        let mut items = vec![];
+        let (pinned_axis_column, variable_axis_column) = match variable_axis {
+            TimeAxis::DecisionTime => ("transaction_time", "decision_time"),
+            TimeAxis::TransactionTime => ("decision_time", "transaction_time"),
+        };
 
-        if let Some(new_graph_resolve_depths) =
-            graph_resolve_depths.decrement_depth_for_edge(edge_kind, edge_direction)
-        {
-            let time_axis = subgraph.temporal_axes.resolved.variable_time_axis();
+        let table = Table::Reference(reference_table).transpile_to_string();
+        let [source_1, source_2] =
+            if let ForeignKeyReference::Double { join, .. } = reference_table.source_relation() {
+                [join[0].transpile_to_string(), join[1].transpile_to_string()]
+            } else {
+                unreachable!("entity reference tables don't have single conditions")
+            };
+        let [target_1, target_2] =
+            if let ForeignKeyReference::Double { on, .. } = reference_table.target_relation() {
+                [on[0].transpile_to_string(), on[1].transpile_to_string()]
+            } else {
+                unreachable!("entity reference tables don't have single conditions")
+            };
 
-            for edge_entity in <Self as Read<Entity>>::read_vec(
-                self,
-                &Filter::for_knowledge_graph_edge_by_entity_id(
-                    entity_vertex_id.base_id,
-                    edge_kind,
-                    edge_direction.reversed(),
+        Ok(self
+            .client
+            .as_client()
+            .query(
+                &format!(
+                    r#"
+                        SELECT
+                            source.owned_by_id,
+                            source.entity_uuid,
+                            lower(source.{variable_axis_column}),
+                            target.owned_by_id,
+                            target.entity_uuid,
+                            lower(source.{variable_axis_column}),
+                            source.{variable_axis_column} * target.{variable_axis_column},
+                            target.entity_edition_id,
+                            source.{variable_axis_column} * target.{variable_axis_column} * filter.interval,
+                            filter.idx
+                        FROM {table}
+
+                        JOIN entity_temporal_metadata AS source
+                          ON source.owned_by_id = {source_1}
+                         AND source.entity_uuid = {source_2}
+                         AND source.{pinned_axis_column} @> $4::timestamptz
+
+                        JOIN unnest($1::uuid[], $2::uuid[], $3::tstzrange[])
+                             WITH ORDINALITY AS filter(owned_by_id, entity_uuid, interval, idx)
+                          ON filter.owned_by_id = source.owned_by_id
+                         AND filter.entity_uuid = source.entity_uuid
+                         AND filter.interval && source.{variable_axis_column}
+
+                        JOIN entity_temporal_metadata AS target
+                          ON target.owned_by_id = {target_1}
+                         AND target.entity_uuid = {target_2}
+                         AND target.{pinned_axis_column} @> $4::timestamptz
+                         AND target.{variable_axis_column} && source.{variable_axis_column}
+                    "#
                 ),
-                Some(temporal_axes),
+                &[&owned_by_ids, &entity_uuids, &intervals, &pinned],
             )
-            .await?
-            {
-                let edge_interval = edge_entity
-                    .metadata
-                    .temporal_versioning()
-                    .variable_time_interval(time_axis)
-                    .intersect(entity_interval)
-                    .unwrap_or_else(|| {
-                        unreachable!("The edge interval and the entity interval do not overlap")
-                    });
-
-                subgraph.insert_edge(
-                    &entity_vertex_id,
-                    edge_kind,
-                    edge_direction,
-                    EntityIdWithInterval {
-                        entity_id: edge_entity.metadata.record_id().entity_id,
-                        interval: edge_interval,
+            .await
+            .into_report()
+            .change_context(QueryError)?
+            .into_iter()
+            .map(|row| {
+                let source_vertex_id = EntityVertexId {
+                    base_id: EntityId {
+                        owned_by_id: row.get(0),
+                        entity_uuid: row.get(1),
                     },
-                );
-
-                let edge_entity_vertex_id = edge_entity.vertex_id(time_axis);
-                subgraph.insert_vertex(&edge_entity_vertex_id, edge_entity);
-
-                items.push((
-                    edge_entity_vertex_id,
-                    new_graph_resolve_depths,
-                    temporal_axes.clone(),
-                ));
-            }
-        }
-        Ok(items.into_iter())
+                    revision_id: row.get::<_, Timestamp<()>>(2).cast(),
+                };
+                let target_vertex_id = EntityVertexId {
+                    base_id: EntityId {
+                        owned_by_id: row.get(3),
+                        entity_uuid: row.get(4),
+                    },
+                    revision_id: row.get::<_, Timestamp<()>>(5).cast(),
+                };
+                let target_id = EntityIdWithInterval {
+                    entity_id: target_vertex_id.base_id,
+                    interval: row.get(6),
+                };
+                let target_entity_edition_id = row.get(7);
+                let interval = row.get(8);
+                let index = usize::try_from(row.get::<_, i64>(9) - 1).expect("invalid index");
+                (source_vertex_id, target_vertex_id, target_id, target_entity_edition_id, interval, index)
+            }))
     }
 
     /// Internal method to read an [`Entity`] into a [`TraversalContext`].
@@ -111,106 +245,143 @@ impl<C: AsClient> PostgresStore<C> {
         traversal_context: &mut TraversalContext,
         subgraph: &mut Subgraph,
     ) -> Result<(), QueryError> {
-        let time_axis = subgraph.temporal_axes.resolved.variable_time_axis();
-
         let mut entity_type_queue = Vec::new();
+        let pinned_timestamp = subgraph.temporal_axes.resolved.pinned_timestamp();
+        let variable_time_axis = subgraph.temporal_axes.resolved.variable_time_axis();
 
         while !entity_queue.is_empty() {
-            // TODO: We could re-use the memory here but we expect to batch the processing of this
-            //       for-loop. See https://app.asana.com/0/0/1204117847656663/f
-            for (entity_vertex_id, graph_resolve_depths, temporal_axes) in
-                mem::take(&mut entity_queue)
-            {
-                let entity_interval = subgraph
-                    .get_vertex::<Entity>(&entity_vertex_id)
-                    .unwrap_or_else(|| {
-                        // Entities are always inserted into the subgraph before they are resolved,
-                        // so this should never happen. If it does, it is a bug.
-                        unreachable!("entity should already be in the subgraph");
-                    })
-                    .metadata
-                    .temporal_versioning()
-                    .variable_time_interval(time_axis);
+            let mut ontology_edges_to_traverse = Option::<(Vec<_>, Vec<_>, Vec<_>, Vec<_>)>::None;
+            let mut entity_edges_to_traverse = HashMap::<
+                (KnowledgeGraphEdgeKind, EdgeDirection),
+                (Vec<_>, Vec<_>, Vec<_>, Vec<_>),
+            >::new();
 
-                // Intersects the version interval of the entity with the variable axis's time
-                // interval. We only want to resolve the entity further for the overlap of these two
-                // intervals.
-                let temporal_axes = temporal_axes
-                    .clone()
-                    .intersect_variable_interval(entity_interval)
-                    .unwrap_or_else(|| {
-                        // `traverse_entity` is called with the returned entities from `read` with
-                        // `temporal_axes`. This implies, that the version interval of `entity`
-                        // overlaps with `temporal_axes`. `variable_interval` returns `None` if
-                        // there are no overlapping points, so this should never happen.
-                        unreachable!(
-                            "the version interval of the entity does not overlap with the \
-                             variable axis's time interval"
-                        );
-                    });
+            let entity_edges = [
+                (
+                    KnowledgeGraphEdgeKind::HasLeftEntity,
+                    EdgeDirection::Incoming,
+                    ReferenceTable::EntityHasLeftEntity,
+                ),
+                (
+                    KnowledgeGraphEdgeKind::HasRightEntity,
+                    EdgeDirection::Incoming,
+                    ReferenceTable::EntityHasRightEntity,
+                ),
+                (
+                    KnowledgeGraphEdgeKind::HasLeftEntity,
+                    EdgeDirection::Outgoing,
+                    ReferenceTable::EntityHasLeftEntity,
+                ),
+                (
+                    KnowledgeGraphEdgeKind::HasRightEntity,
+                    EdgeDirection::Outgoing,
+                    ReferenceTable::EntityHasRightEntity,
+                ),
+            ];
 
+            #[expect(clippy::iter_with_drain, reason = "false positive, vector is reused")]
+            for (entity_vertex_id, graph_resolve_depths, temporal_axes) in entity_queue.drain(..) {
                 if let Some(new_graph_resolve_depths) = graph_resolve_depths
                     .decrement_depth_for_edge(SharedEdgeKind::IsOfType, EdgeDirection::Outgoing)
                 {
-                    for entity_type in <Self as Read<EntityTypeWithMetadata>>::read_vec(
-                        self,
-                        &Filter::for_shared_edge_by_entity_id(
-                            entity_vertex_id.base_id,
-                            SharedEdgeKind::IsOfType,
-                        ),
-                        Some(&temporal_axes),
-                    )
-                    .await?
-                    {
-                        let entity_type_vertex_id = entity_type.vertex_id(time_axis);
-
-                        subgraph.insert_edge(
-                            &entity_vertex_id,
-                            SharedEdgeKind::IsOfType,
-                            EdgeDirection::Outgoing,
-                            entity_type_vertex_id.clone(),
-                        );
-
-                        subgraph.insert_vertex(&entity_type_vertex_id, entity_type);
-
-                        entity_type_queue.push((
-                            entity_type_vertex_id,
-                            new_graph_resolve_depths,
-                            temporal_axes.clone(),
-                        ));
-                    }
+                    let entry = ontology_edges_to_traverse.get_or_insert_with(Default::default);
+                    entry.0.push(entity_vertex_id.base_id.owned_by_id);
+                    entry.1.push(entity_vertex_id.base_id.entity_uuid);
+                    entry.2.push(temporal_axes.variable_interval());
+                    entry.3.push(new_graph_resolve_depths);
                 }
 
-                for (edge_kind, edge_direction) in &[
-                    (
-                        KnowledgeGraphEdgeKind::HasLeftEntity,
-                        EdgeDirection::Incoming,
-                    ),
-                    (
-                        KnowledgeGraphEdgeKind::HasRightEntity,
-                        EdgeDirection::Incoming,
-                    ),
-                    (
-                        KnowledgeGraphEdgeKind::HasLeftEntity,
-                        EdgeDirection::Outgoing,
-                    ),
-                    (
-                        KnowledgeGraphEdgeKind::HasRightEntity,
-                        EdgeDirection::Outgoing,
-                    ),
-                ] {
+                for (edge_kind, edge_direction, _) in entity_edges {
+                    if let Some(new_graph_resolve_depths) =
+                        graph_resolve_depths.decrement_depth_for_edge(edge_kind, edge_direction)
+                    {
+                        let entry = entity_edges_to_traverse
+                            .entry((edge_kind, edge_direction))
+                            .or_default();
+                        entry.0.push(entity_vertex_id.base_id.owned_by_id);
+                        entry.1.push(entity_vertex_id.base_id.entity_uuid);
+                        entry.2.push(temporal_axes.variable_interval());
+                        entry.3.push(new_graph_resolve_depths);
+                    }
+                }
+            }
+
+            if let Some((owned_by_ids, entity_uuids, intervals, resolve_depths)) =
+                ontology_edges_to_traverse.take()
+            {
+                entity_type_queue.extend(
+                    self.read_shared_edges(
+                        &owned_by_ids,
+                        &entity_uuids,
+                        &intervals,
+                        pinned_timestamp,
+                        variable_time_axis,
+                    )
+                    .await?
+                    .map(|(source_vertex_id, target_url, index)| {
+                        let target_vertex_id = EntityTypeVertexId::from(target_url);
+
+                        traversal_context
+                            .entity_type_ids
+                            .insert(target_vertex_id.clone());
+
+                        subgraph.insert_edge(
+                            &source_vertex_id,
+                            SharedEdgeKind::IsOfType,
+                            EdgeDirection::Outgoing,
+                            target_vertex_id.clone(),
+                        );
+
+                        (target_vertex_id, resolve_depths[index])
+                    }),
+                );
+            }
+
+            for (edge_kind, edge_direction, table) in entity_edges {
+                if let Some((owned_by_ids, entity_uuids, intervals, resolve_depths)) =
+                    entity_edges_to_traverse.get(&(edge_kind, edge_direction))
+                {
                     entity_queue.extend(
-                        self.traverse_knowledge_graph_edge(
-                            entity_vertex_id,
-                            entity_interval,
-                            *edge_kind,
-                            *edge_direction,
-                            graph_resolve_depths,
-                            &temporal_axes,
-                            traversal_context,
-                            subgraph,
+                        self.read_entity_edges(
+                            owned_by_ids,
+                            entity_uuids,
+                            intervals,
+                            pinned_timestamp,
+                            variable_time_axis,
+                            table,
                         )
-                        .await?,
+                        .await?
+                        .map(
+                            |(
+                                source_vertex_id,
+                                target_vertex_id,
+                                target_id,
+                                target_edition_id,
+                                new_interval,
+                                index,
+                            )| {
+                                traversal_context
+                                    .entity_edition_ids
+                                    .insert(target_edition_id);
+
+                                subgraph.insert_edge(
+                                    &source_vertex_id,
+                                    edge_kind,
+                                    edge_direction,
+                                    target_id,
+                                );
+
+                                (
+                                    target_vertex_id,
+                                    resolve_depths[index],
+                                    QueryTemporalAxes::from_variable_time_axis(
+                                        variable_time_axis,
+                                        pinned_timestamp,
+                                        new_interval,
+                                    ),
+                                )
+                            },
+                        ),
                     );
                 }
             }
@@ -490,6 +661,8 @@ impl<C: AsClient> EntityStore for PostgresStore<C> {
             subgraph.roots.insert((*vertex_id).into());
         }
 
+        let mut traversal_context = TraversalContext::default();
+
         // TODO: We currently pass in the subgraph as mutable reference, thus we cannot borrow the
         //       vertices and have to `.collect()` the keys.
         self.traverse_entities(
@@ -505,10 +678,12 @@ impl<C: AsClient> EntityStore for PostgresStore<C> {
                     )
                 })
                 .collect(),
-            &mut TraversalContext,
+            &mut traversal_context,
             &mut subgraph,
         )
         .await?;
+
+        traversal_context.load_vertices(self, &mut subgraph).await?;
 
         Ok(subgraph)
     }

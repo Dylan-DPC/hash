@@ -5,6 +5,8 @@ mod migration;
 mod pool;
 mod query;
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use error_stack::{IntoReport, Result, ResultExt};
 #[cfg(hash_graph_test_environment)]
@@ -31,8 +33,12 @@ use crate::{
             VersionedUrlAlreadyExists,
         },
         postgres::ontology::{OntologyDatabaseType, OntologyId},
-        AccountStore, BaseUrlAlreadyExists, ConflictBehavior, InsertionError, QueryError,
+        AccountStore, BaseUrlAlreadyExists, ConflictBehavior, InsertionError, QueryError, Record,
         StoreError, UpdateError,
+    },
+    subgraph::{
+        identifier::{DataTypeVertexId, EntityTypeVertexId, PropertyTypeVertexId},
+        Subgraph,
     },
 };
 #[cfg(hash_graph_test_environment)]
@@ -45,7 +51,72 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct TraversalContext;
+pub struct TraversalContext {
+    pub data_type_ids: HashSet<DataTypeVertexId>,
+    pub property_type_ids: HashSet<PropertyTypeVertexId>,
+    pub entity_type_ids: HashSet<EntityTypeVertexId>,
+    pub entity_edition_ids: HashSet<EntityEditionId>,
+}
+
+impl TraversalContext {
+    pub async fn load_vertices<C: AsClient>(
+        self,
+        store: &PostgresStore<C>,
+        subgraph: &mut Subgraph,
+    ) -> Result<(), QueryError> {
+        let time_axis = subgraph.temporal_axes.resolved.variable_time_axis();
+
+        if !self.data_type_ids.is_empty() {
+            for data_type in store
+                .read_data_types_by_ids(
+                    self.data_type_ids.into_iter(),
+                    &subgraph.temporal_axes.resolved,
+                )
+                .await?
+            {
+                subgraph.insert_vertex(&data_type.vertex_id(time_axis), data_type);
+            }
+        }
+
+        if !self.property_type_ids.is_empty() {
+            for property_type in store
+                .read_property_types_by_ids(
+                    self.property_type_ids.into_iter(),
+                    &subgraph.temporal_axes.resolved,
+                )
+                .await?
+            {
+                subgraph.insert_vertex(&property_type.vertex_id(time_axis), property_type);
+            }
+        }
+
+        if !self.entity_type_ids.is_empty() {
+            for entity_type in store
+                .read_entity_types_by_ids(
+                    self.entity_type_ids.into_iter(),
+                    &subgraph.temporal_axes.resolved,
+                )
+                .await?
+            {
+                subgraph.insert_vertex(&entity_type.vertex_id(time_axis), entity_type);
+            }
+        }
+
+        if !self.entity_edition_ids.is_empty() {
+            for entity in store
+                .read_entities_by_ids(
+                    self.entity_edition_ids.into_iter(),
+                    &subgraph.temporal_axes.resolved,
+                )
+                .await?
+            {
+                subgraph.insert_vertex(&entity.vertex_id(time_axis), entity);
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// A Postgres-backed store
 pub struct PostgresStore<C> {

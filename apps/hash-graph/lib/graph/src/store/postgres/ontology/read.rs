@@ -7,10 +7,10 @@ use postgres_types::{FromSql, Type};
 use serde::Deserialize;
 use time::OffsetDateTime;
 use tokio_postgres::GenericClient;
-use type_system::url::BaseUrl;
+use type_system::url::{BaseUrl, VersionedUrl};
 
 use crate::{
-    identifier::ontology::OntologyTypeRecordId,
+    identifier::ontology::{OntologyTypeRecordId, OntologyTypeVersion},
     ontology::{
         ExternalOntologyElementMetadata, OntologyElementMetadata, OntologyType,
         OntologyTypeWithMetadata, OwnedOntologyElementMetadata,
@@ -22,7 +22,10 @@ use crate::{
     },
     store::{
         crud::Read,
-        postgres::query::{Distinctness, PostgresQueryPath, PostgresRecord, SelectCompiler},
+        postgres::query::{
+            Distinctness, ForeignKeyReference, PostgresQueryPath, PostgresRecord, ReferenceTable,
+            SelectCompiler, Table, Transpile,
+        },
         query::{Filter, OntologyQueryPath},
         AsClient, PostgresStore, QueryError, Record,
     },
@@ -218,5 +221,75 @@ where
                     ))
                 });
         Ok(stream)
+    }
+}
+
+impl<C: AsClient> PostgresStore<C> {
+    pub(crate) async fn read_ontology_edges(
+        &self,
+        base_urls: &[String],
+        versions: &[OntologyTypeVersion],
+        reference_table: ReferenceTable,
+    ) -> Result<impl Iterator<Item = (VersionedUrl, VersionedUrl, usize)>, QueryError> {
+        let table = Table::Reference(reference_table).transpile_to_string();
+        let source =
+            if let ForeignKeyReference::Single { join, .. } = reference_table.source_relation() {
+                join.transpile_to_string()
+            } else {
+                unreachable!("Ontology reference tables don't have multiple conditions")
+            };
+        let target =
+            if let ForeignKeyReference::Single { on, .. } = reference_table.target_relation() {
+                on.transpile_to_string()
+            } else {
+                unreachable!("Ontology reference tables don't have multiple conditions")
+            };
+
+        Ok(self
+            .client
+            .as_client()
+            .query(
+                &format!(
+                    r#"
+                        SELECT
+                            source.base_url    AS source_base_url,
+                            source.version     AS source_version,
+                            target.base_url    AS target_base_url,
+                            target.version     AS target_version,
+                            filter.idx         AS idx
+                        FROM {table}
+
+                        JOIN ontology_ids as source
+                          ON {source}
+                           = source.ontology_id
+
+                        JOIN unnest($1::text[], $2::int8[])
+                          WITH ORDINALITY AS filter(url, version, idx)
+                          ON filter.url = source.base_url AND filter.version = source.version
+
+                        JOIN ontology_ids as target
+                          ON {target}
+                           = target.ontology_id;
+                    "#
+                ),
+                &[&base_urls, &versions],
+            )
+            .await
+            .into_report()
+            .change_context(QueryError)?
+            .into_iter()
+            .map(|row| {
+                let source_vertex_id = VersionedUrl {
+                    base_url: BaseUrl::new(row.get(0)).expect("invalid URL"),
+                    version: row.get::<_, OntologyTypeVersion>(1).inner(),
+                };
+                let target_vertex_id = VersionedUrl {
+                    base_url: BaseUrl::new(row.get(2)).expect("invalid URL"),
+                    version: row.get::<_, OntologyTypeVersion>(3).inner(),
+                };
+
+                let index = usize::try_from(row.get::<_, i64>(4) - 1).expect("invalid index");
+                (source_vertex_id, target_vertex_id, index)
+            }))
     }
 }

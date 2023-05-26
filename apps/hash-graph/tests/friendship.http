@@ -241,6 +241,76 @@ Accept: application/json
     client.global.set("person_property_type_id", `${response.body.recordId.baseUrl}v/${response.body.recordId.version}`);
 %}
 
+### Insert property-constraining property type
+POST http://127.0.0.1:4000/property-types
+Content-Type: application/json
+Accept: application/json
+
+{
+  "ownedById": "{{account_id}}",
+  "actorId": "{{account_id}}",
+  "schema": [
+    {
+      "$schema": "https://blockprotocol.org/types/modules/graph/0.3/schema/property-type",
+      "kind": "propertyType",
+      "$id": "http://localhost:3000/@alice/types/property-type/favorite-film/v/1",
+      "title": "Favorite Film",
+      "oneOf": [
+        {
+          "$ref": "http://localhost:3000/@alice/types/data-type/text/v/1"
+        }
+      ]
+    },
+    {
+      "$schema": "https://blockprotocol.org/types/modules/graph/0.3/schema/property-type",
+      "kind": "propertyType",
+      "$id": "http://localhost:3000/@alice/types/property-type/hobby/v/1",
+      "title": "Favorite Quote",
+      "oneOf": [
+        {
+          "$ref": "http://localhost:3000/@alice/types/data-type/text/v/1"
+        }
+      ]
+    },
+    {
+      "$schema": "https://blockprotocol.org/types/modules/graph/0.3/schema/property-type",
+      "kind": "propertyType",
+      "$id": "http://localhost:3000/@alice/types/property-type/favorite-song/v/1",
+      "title": "Favorite Song",
+      "oneOf": [
+        {
+          "$ref": "http://localhost:3000/@alice/types/data-type/text/v/1"
+        }
+      ]
+    },
+    {
+      "$schema": "https://blockprotocol.org/types/modules/graph/0.3/schema/property-type",
+      "kind": "propertyType",
+      "$id": "http://localhost:3000/@alice/types/property-type/interests/v/1",
+      "title": "Interests",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "http://localhost:3000/@alice/types/property-type/favorite-film/": {
+              "$ref": "http://localhost:3000/@alice/types/property-type/favorite-film/v/1"
+            },
+            "http://localhost:3000/@alice/types/property-type/favorite-song/": {
+              "$ref": "http://localhost:3000/@alice/types/property-type/favorite-song/v/1"
+            },
+            "http://localhost:3000/@alice/types/property-type/hobby/": {
+              "type": "array",
+              "items": {
+                "$ref": "http://localhost:3000/@alice/types/property-type/hobby/v/1"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
 ### Get Name property type
 POST http://127.0.0.1:4000/property-types/query
 Content-Type: application/json
@@ -846,34 +916,32 @@ Content-Type: application/json
 %}
 
 ### Get all entity types starting with "http://localhost:3000/@alice"
-POST http://127.0.0.1:4000/entity-types/query
+POST http://127.0.0.1:4000/property-types/query
 Content-Type: application/json
 
 {
   "filter": {
-    "startsWith": [
-      { "path": ["versionedUrl"] },
-      { "parameter": "http://localhost:3000/@alice" }
+    "all": [
     ]
   },
   "graphResolveDepths": {
     "inheritsFrom": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsValuesOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsPropertiesOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsLinksOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "constrainsLinkDestinationsOn": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "isOfType": {
-      "outgoing": 0
+      "outgoing": 10
     },
     "hasLeftEntity": {
       "incoming": 0,
@@ -909,14 +977,12 @@ Content-Type: application/json
 %}
 
 ### Get all entity types, where the title ends with "ship"
-POST http://127.0.0.1:4000/entity-types/query
+POST http://127.0.0.1:4000/property-types/query
 Content-Type: application/json
 
 {
   "filter": {
-    "endsWith": [
-      { "path": ["title"] },
-      { "parameter": "ship" }
+    "all": [
     ]
   },
   "graphResolveDepths": {
@@ -1455,37 +1521,35 @@ Content-Type: application/json
 
 {
   "filter": {
-    "containsSegment": [
-      { "path": ["properties", "http://localhost:3000/@alice/types/property-type/name/"] },
-      { "parameter": "Alice" }
+    "all": [
     ]
   },
   "graphResolveDepths": {
     "inheritsFrom": {
-      "outgoing": 0
+      "outgoing": 5
     },
     "constrainsValuesOn": {
-      "outgoing": 0
+      "outgoing": 5
     },
     "constrainsPropertiesOn": {
-      "outgoing": 0
+      "outgoing": 5
     },
     "constrainsLinksOn": {
-      "outgoing": 0
+      "outgoing": 5
     },
     "constrainsLinkDestinationsOn": {
-      "outgoing": 0
+      "outgoing": 5
     },
     "isOfType": {
-      "outgoing": 0
+      "outgoing": 5
     },
     "hasLeftEntity": {
-      "incoming": 0,
-      "outgoing": 0
+      "incoming": 5,
+      "outgoing": 5
     },
     "hasRightEntity": {
-      "incoming": 0,
-      "outgoing": 0
+      "incoming": 5,
+      "outgoing": 5
     }
   },
   "temporalAxes": {

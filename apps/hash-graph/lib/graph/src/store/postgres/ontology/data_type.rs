@@ -5,12 +5,13 @@ use error_stack::{IntoReport, Result, ResultExt};
 use type_system::DataType;
 
 use crate::{
-    ontology::{DataTypeWithMetadata, OntologyElementMetadata},
+    ontology::{DataTypeQueryPath, DataTypeWithMetadata, OntologyElementMetadata},
     provenance::RecordCreatedById,
     store::{
         crud::Read,
         error::DeletionError,
         postgres::{ontology::OntologyId, TraversalContext},
+        query::{Filter, FilterExpression, ParameterList},
         AsClient, ConflictBehavior, DataTypeStore, InsertionError, PostgresStore, QueryError,
         Record, UpdateError,
     },
@@ -21,13 +22,34 @@ use crate::{
 };
 
 impl<C: AsClient> PostgresStore<C> {
+    pub(crate) async fn read_data_types_by_ids(
+        &self,
+        vertex_ids: impl IntoIterator<Item = DataTypeVertexId> + Send,
+        temporal_axes: &QueryTemporalAxes,
+    ) -> Result<Vec<DataTypeWithMetadata>, QueryError> {
+        let ids = vertex_ids
+            .into_iter()
+            .map(|id| format!("{}v/{}", id.base_id, id.revision_id.inner()))
+            .collect::<Vec<_>>();
+
+        <Self as Read<DataTypeWithMetadata>>::read_vec(
+            self,
+            &Filter::<DataTypeWithMetadata>::In(
+                FilterExpression::Path(DataTypeQueryPath::VersionedUrl),
+                ParameterList::VersionedUrls(&ids),
+            ),
+            Some(temporal_axes),
+        )
+        .await
+    }
+
     /// Internal method to read a [`DataTypeWithMetadata`] into a [`TraversalContext`].
     ///
     /// This is used to recursively resolve a type, so the result can be reused.
     #[tracing::instrument(level = "trace", skip(self, _traversal_context, _subgraph))]
     pub(crate) async fn traverse_data_types(
         &self,
-        queue: Vec<(DataTypeVertexId, GraphResolveDepths, QueryTemporalAxes)>,
+        queue: Vec<(DataTypeVertexId, GraphResolveDepths)>,
         _traversal_context: &mut TraversalContext,
         _subgraph: &mut Subgraph,
     ) -> Result<(), QueryError> {
@@ -122,6 +144,8 @@ impl<C: AsClient> DataTypeStore for PostgresStore<C> {
             subgraph.roots.insert(vertex_id.clone().into());
         }
 
+        let mut traversal_context = TraversalContext::default();
+
         // TODO: We currently pass in the subgraph as mutable reference, thus we cannot borrow the
         //       vertices and have to `.collect()` the keys.
         self.traverse_data_types(
@@ -129,18 +153,14 @@ impl<C: AsClient> DataTypeStore for PostgresStore<C> {
                 .vertices
                 .data_types
                 .keys()
-                .map(|id| {
-                    (
-                        id.clone(),
-                        subgraph.depths,
-                        subgraph.temporal_axes.resolved.clone(),
-                    )
-                })
+                .map(|id| (id.clone(), subgraph.depths))
                 .collect(),
-            &mut TraversalContext,
+            &mut traversal_context,
             &mut subgraph,
         )
         .await?;
+
+        traversal_context.load_vertices(self, &mut subgraph).await?;
 
         Ok(subgraph)
     }
