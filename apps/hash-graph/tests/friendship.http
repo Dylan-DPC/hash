@@ -1521,35 +1521,44 @@ Content-Type: application/json
 
 {
   "filter": {
-    "all": [
+    "startsWith": [
+      {
+        "path": [
+          "properties",
+            "http://localhost:3000/@alice/types/property-type/name/"
+        ]
+      },
+      {
+        "parameter": "Alice"
+      }
     ]
   },
   "graphResolveDepths": {
     "inheritsFrom": {
-      "outgoing": 5
+      "outgoing": 0
     },
     "constrainsValuesOn": {
-      "outgoing": 5
+      "outgoing": 0
     },
     "constrainsPropertiesOn": {
-      "outgoing": 5
+      "outgoing": 0
     },
     "constrainsLinksOn": {
-      "outgoing": 5
+      "outgoing": 0
     },
     "constrainsLinkDestinationsOn": {
-      "outgoing": 5
+      "outgoing": 0
     },
     "isOfType": {
-      "outgoing": 5
+      "outgoing": 1
     },
     "hasLeftEntity": {
-      "incoming": 5,
-      "outgoing": 5
+      "incoming": 1,
+      "outgoing": 0
     },
     "hasRightEntity": {
-      "incoming": 5,
-      "outgoing": 5
+      "incoming": 0,
+      "outgoing": 0
     }
   },
   "temporalAxes": {
@@ -1560,9 +1569,7 @@ Content-Type: application/json
     "variable": {
       "axis": "decisionTime",
       "interval": {
-        "start": {
-          "kind": "unbounded"
-        },
+        "start": null,
         "end": null
       }
     }

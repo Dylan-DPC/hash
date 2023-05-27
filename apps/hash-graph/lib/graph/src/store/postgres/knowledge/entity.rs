@@ -1,6 +1,6 @@
 mod read;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, mem::swap};
 
 use async_trait::async_trait;
 use error_stack::{IntoReport, Report, Result, ResultExt};
@@ -134,6 +134,7 @@ impl<C: AsClient> PostgresStore<C> {
         pinned: Timestamp<PinnedAxis>,
         variable_axis: TimeAxis,
         reference_table: ReferenceTable,
+        edge_direction: EdgeDirection,
     ) -> Result<
         impl Iterator<
             Item = (
@@ -153,18 +154,23 @@ impl<C: AsClient> PostgresStore<C> {
         };
 
         let table = Table::Reference(reference_table).transpile_to_string();
-        let [source_1, source_2] =
+        let [mut source_1, mut source_2] =
             if let ForeignKeyReference::Double { join, .. } = reference_table.source_relation() {
                 [join[0].transpile_to_string(), join[1].transpile_to_string()]
             } else {
                 unreachable!("entity reference tables don't have single conditions")
             };
-        let [target_1, target_2] =
+        let [mut target_1, mut target_2] =
             if let ForeignKeyReference::Double { on, .. } = reference_table.target_relation() {
                 [on[0].transpile_to_string(), on[1].transpile_to_string()]
             } else {
                 unreachable!("entity reference tables don't have single conditions")
             };
+
+        if edge_direction == EdgeDirection::Incoming {
+            swap(&mut source_1, &mut target_1);
+            swap(&mut source_2, &mut target_2);
+        }
 
         Ok(self
             .client
@@ -190,17 +196,18 @@ impl<C: AsClient> PostgresStore<C> {
                          AND source.entity_uuid = {source_2}
                          AND source.{pinned_axis_column} @> $4::timestamptz
 
-                        JOIN unnest($1::uuid[], $2::uuid[], $3::tstzrange[])
-                             WITH ORDINALITY AS filter(owned_by_id, entity_uuid, interval, idx)
-                          ON filter.owned_by_id = source.owned_by_id
-                         AND filter.entity_uuid = source.entity_uuid
-                         AND filter.interval && source.{variable_axis_column}
-
                         JOIN entity_temporal_metadata AS target
                           ON target.owned_by_id = {target_1}
                          AND target.entity_uuid = {target_2}
                          AND target.{pinned_axis_column} @> $4::timestamptz
                          AND target.{variable_axis_column} && source.{variable_axis_column}
+
+                        JOIN unnest($1::uuid[], $2::uuid[], $3::tstzrange[])
+                             WITH ORDINALITY AS filter(owned_by_id, entity_uuid, interval, idx)
+                          ON filter.owned_by_id = source.owned_by_id
+                         AND filter.entity_uuid = source.entity_uuid
+                         AND filter.interval && source.{variable_axis_column}
+                         AND filter.interval && target.{variable_axis_column}
                     "#
                 ),
                 &[&owned_by_ids, &entity_uuids, &intervals, &pinned],
@@ -349,6 +356,7 @@ impl<C: AsClient> PostgresStore<C> {
                             pinned_timestamp,
                             variable_time_axis,
                             table,
+                            edge_direction,
                         )
                         .await?
                         .map(
