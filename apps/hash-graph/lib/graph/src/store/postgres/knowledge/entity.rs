@@ -77,30 +77,32 @@ impl<C: AsClient> PostgresStore<C> {
             .client
             .as_client()
             .query(
-                r#"
-                    SELECT
-                        entity_temporal_metadata.owned_by_id,
-                        entity_temporal_metadata.entity_uuid,
-                        lower(entity_temporal_metadata.{variable_axis_column}),
-                        ontology_ids.base_url,
-                        ontology_ids.version,
-                        filter.idx
-                    FROM entity_is_of_type
+                &format!(
+                    r#"
+                        SELECT
+                            entity_temporal_metadata.owned_by_id,
+                            entity_temporal_metadata.entity_uuid,
+                            lower(entity_temporal_metadata.{variable_axis_column}),
+                            ontology_ids.base_url,
+                            ontology_ids.version,
+                            filter.idx
+                        FROM entity_is_of_type
 
-                    JOIN entity_temporal_metadata
-                      ON entity_temporal_metadata.entity_edition_id
-                         = entity_is_of_type.entity_edition_id
-                     AND entity_temporal_metadata.{pinned_axis_column} @> $4::timestamptz
+                        JOIN entity_temporal_metadata
+                          ON entity_temporal_metadata.entity_edition_id
+                             = entity_is_of_type.entity_edition_id
+                         AND entity_temporal_metadata.{pinned_axis_column} @> $4::timestamptz
 
-                    JOIN unnest($1::uuid[], $2::uuid[], $3::tstzrange[])
-                         WITH ORDINALITY AS filter(owned_by_id, entity_uuid, interval, idx)
-                      ON filter.owned_by_id = entity_temporal_metadata.owned_by_id
-                     AND filter.entity_uuid = entity_temporal_metadata.entity_uuid
-                     AND filter.interval && entity_temporal_metadata.{variable_axis_column}
+                        JOIN unnest($1::uuid[], $2::uuid[], $3::tstzrange[])
+                             WITH ORDINALITY AS filter(owned_by_id, entity_uuid, interval, idx)
+                          ON filter.owned_by_id = entity_temporal_metadata.owned_by_id
+                         AND filter.entity_uuid = entity_temporal_metadata.entity_uuid
+                         AND filter.interval && entity_temporal_metadata.{variable_axis_column}
 
-                    JOIN ontology_ids
-                      ON entity_is_of_type.entity_type_ontology_id = ontology_ids.ontology_id;
-                "#,
+                        JOIN ontology_ids
+                          ON entity_is_of_type.entity_type_ontology_id = ontology_ids.ontology_id;
+                    "#
+                ),
                 &[&owned_by_ids, &entity_uuids, &intervals, &pinned],
             )
             .await
@@ -182,9 +184,9 @@ impl<C: AsClient> PostgresStore<C> {
                             lower(source.{variable_axis_column}),
                             target.owned_by_id,
                             target.entity_uuid,
-                            lower(source.{variable_axis_column}),
-                            source.{variable_axis_column} * target.{variable_axis_column},
+                            lower(target.{variable_axis_column}),
                             target.entity_edition_id,
+                            source.{variable_axis_column} * target.{variable_axis_column},
                             source.{variable_axis_column} * target.{variable_axis_column} * filter.interval,
                             filter.idx
                         FROM {table}
@@ -229,11 +231,11 @@ impl<C: AsClient> PostgresStore<C> {
                     },
                     revision_id: row.get::<_, Timestamp<()>>(5).cast(),
                 };
+                let target_entity_edition_id = row.get(6);
                 let target_id = EntityIdWithInterval {
                     entity_id: target_vertex_id.base_id,
-                    interval: row.get(6),
+                    interval: row.get(7),
                 };
-                let target_entity_edition_id = row.get(7);
                 let interval = row.get(8);
                 let index = usize::try_from(row.get::<_, i64>(9) - 1).expect("invalid index");
                 (source_vertex_id, target_vertex_id, target_id, target_entity_edition_id, interval, index)
