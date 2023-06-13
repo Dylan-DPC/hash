@@ -334,7 +334,7 @@ services:
         condition: service_healthy
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+      TEMPORAL_CORS_ORIGINS: http://localhost:3100
     security_opt:
       - no-new-privileges:true
     ports:
