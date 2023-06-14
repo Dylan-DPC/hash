@@ -20,6 +20,9 @@ const { getEntityTypeSubgraph } = proxyActivities<
   ReturnType<typeof createGraphActivities>
 >({
   startToCloseTimeout: "5 minutes",
+  retry: {
+    maximumAttempts: 1,
+  },
 });
 
 export async function getEntityType(params: {

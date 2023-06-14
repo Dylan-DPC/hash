@@ -2,6 +2,7 @@
 import os
 
 import openai
+from langchain.llms import OpenAI
 from temporalio import activity
 
 
@@ -22,3 +23,12 @@ async def complete(prompt: str) -> str:
     text_response = completion["choices"][0]["text"]
 
     return text_response  # noqa: RET504
+
+
+@activity.defn
+async def math(prompt: str) -> str:
+    llm = OpenAI(model_name="gpt-4", temperature=0.5)
+    resp = await llm.agenerate([prompt])
+    print(resp)
+    print(resp.generations[0])
+    return resp.generations[0][0].text

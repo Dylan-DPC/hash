@@ -7,8 +7,8 @@ from dotenv import find_dotenv, load_dotenv
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from app.activities import complete
-from app.workflows import DemoWorkflowPy
+from .activities import complete, math
+from .workflows import DemoWorkflowPy, MathWorkflow
 
 load_dotenv()
 load_dotenv(dotenv_path=find_dotenv(filename=".env.local"))
@@ -28,10 +28,12 @@ async def run_worker(stop_event: asyncio.Event) -> None:
         # Register workflows
         workflows=[
             DemoWorkflowPy,
+            MathWorkflow,
         ],
         # Register activities
         activities=[
             complete,
+            math,
         ],
     )
 
@@ -62,4 +64,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(), debug=True)
