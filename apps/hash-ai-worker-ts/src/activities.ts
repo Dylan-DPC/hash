@@ -150,115 +150,89 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
     const schema = {
       type: "object",
       properties: {
-        "https://blockprotocol.org/@examples/types/entity-type/person/v/1": {
+        persons: {
           type: "array",
           items: {
-            $schema:
-              "https://blockprotocol.org/types/modules/graph/0.3/schema/entity-type",
-            $id: "https://blockprotocol.org/@examples/types/entity-type/person/v/1",
             kind: "entityType",
             title: "Person",
             type: "object",
             description:
               "An extremely simplified representation of a person or human being.",
-            examples: [],
-            links: {
-              "https://blockprotocol.org/@examples/types/entity-type/employed-by/v/1":
-                {
-                  type: "array",
-                  minItems: 0,
-                  ordered: false,
-                  items: {
-                    oneOf: [
-                      {
-                        $ref: "https://blockprotocol.org/@examples/types/entity-type/company/v/1",
-                      },
-                    ],
-                  },
-                },
-            },
             properties: {
               entity_id: {
                 description: "The unique identifier of the entity.",
                 type: "number",
               },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/name/":
-                {
-                  description:
-                    "A word or set of words by which something is known, addressed, or referred to.",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                  title: "Name",
-                },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/gender/":
-                {
-                  description: "The gender of a person.",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                  title: "Gender",
-                },
-              "https://blockprotocol.org/@examples/types/property-type/e-mail/":
-                {
-                  description: "An e-mail address.",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                },
+              name: {
+                description:
+                  "A word or set of words by which something is known, addressed, or referred to.",
+                oneOf: [
+                  {
+                    title: "Text",
+                    description: "An ordered sequence of characters",
+                    type: "string",
+                  },
+                ],
+                title: "Name",
+              },
+              age: {
+                description: "The age of an entity.",
+                oneOf: [
+                  {
+                    type: "number",
+                  },
+                ],
+                title: "Gender",
+              },
+              gender: {
+                description: "The gender of a person.",
+                oneOf: [
+                  {
+                    title: "Text",
+                    description: "An ordered sequence of characters",
+                    type: "string",
+                  },
+                ],
+                title: "Gender",
+              },
+              e_mail: {
+                description: "An e-mail address.",
+                oneOf: [
+                  {
+                    title: "Text",
+                    description: "An ordered sequence of characters",
+                    type: "string",
+                  },
+                ],
+              },
             },
-            required: [
-              "id",
-              "https://blockprotocol.org/@blockprotocol/types/property-type/name/",
-            ],
+            required: ["id", "name"],
           },
         },
-        "https://example.org/@examples/types/entity-type/profession/v/1": {
+        professions: {
           type: "array",
           items: {
-            $schema:
-              "https://blockprotocol.org/types/modules/graph/0.3/schema/entity-type",
-            $id: "https://blockprotocol.org/@examples/types/entity-type/person/v/1",
-            kind: "entityType",
-            title: "Profession",
             type: "object",
             description: "The profession of a person or human being.",
-            examples: [],
             properties: {
               entity_id: {
                 description: "The unique identifier of the entity.",
                 type: "number",
               },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/name/":
-                {
-                  description:
-                    "A word or set of words by which something is known, addressed, or referred to.",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                  title: "Name",
-                },
+              name: {
+                description:
+                  "A word or set of words by which something is known, addressed, or referred to.",
+                oneOf: [
+                  {
+                    title: "Text",
+                    description: "An ordered sequence of characters",
+                    type: "string",
+                  },
+                ],
+                title: "Name",
+              },
             },
-            required: [
-              "id",
-              "https://blockprotocol.org/@blockprotocol/types/property-type/name/",
-            ],
+            required: ["id", "name"],
           },
         },
       },
@@ -270,13 +244,13 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
       max_tokens: 1500,
       functions: [
         {
-          name: `create_entity_types`,
+          name: `create_entities_from_property_list`,
           description:
-            "Creates entity types from a list containing the provided parameters",
+            "Creates a list of entities from the provided list of properties",
           parameters: schema,
         },
       ],
-      function_call: { name: "create_entity_types" },
+      function_call: { name: "create_entities_from_property_list" },
       messages: [
         {
           role: "system",
@@ -288,6 +262,8 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
 
           If an information is missing don't make new information up, the provided data is the only source of truth.
           If information is not provided it's not available.
+          If information is not strictly required it's optional.
+          If information is not explicitly stated it must not be assumed.
           Each entity is associated with a unique id. This id is used to reference the entity in the knowledge store. Two entities can never have the same id - even if they are of different types.`,
         },
         {
