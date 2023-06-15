@@ -221,7 +221,7 @@ export const createGraphActivities = (createInfo: {
 
     const response = await openai.createChatCompletion({
       model: "gpt-3.5-turbo-0613",
-      temperature: 0.5,
+      temperature: 0,
       max_tokens: 1500,
       functions: [
         {
@@ -256,7 +256,7 @@ export const createGraphActivities = (createInfo: {
           content: `
           In an environment of a general knowledge store, entities are stored as JSON object consisting of various properties. You should help extracting information from unstructured text to be able to create entities from this text.
           As an LLM you are good for extracting the information and provide the structured data from it. The entities' shape is defined in the function parameter. Extract the information and return the appropriated parameters to call these functions. Please extract
-          the following text into the entity type "Address":
+          the following text into entity types:
 
           ${prompt}
           `,
