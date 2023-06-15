@@ -137,11 +137,29 @@ export const createGraphActivities = (createInfo: {
     });
     const openai = new OpenAIApi(configuration);
 
-    const prompt = `Amelia Hartley, a vivacious young artist with a passion for vibrant colors, resides at 452 Willow Lane in the charming neighborhood of Evergreen Heights. Her cozy address is adorned with blooming flowers and adorned windows, reflecting her imaginative spirit. Within the walls of her quaint cottage, Amelia creates breathtaking paintings that transport viewers to dreamlike realms.`;
+    const prompt = `
+    Character 1: Amelia Hartley
+    Address: 452 Willow Lane, Evergreen Heights
+    
+    Amelia Hartley, a vivacious young artist with a passion for vibrant colors, resides at 452 Willow Lane in the charming neighborhood of Evergreen Heights. Her cozy address is adorned with blooming flowers and adorned windows, reflecting her imaginative spirit. Within the walls of her quaint cottage, Amelia creates breathtaking paintings that transport viewers to dreamlike realms.
+    
+    Character 2: Jackson Bennett
+    Address: 725 Oakwood Avenue, Ravenwood Manor
+    
+    At 725 Oakwood Avenue, nestled within the enigmatic Ravenwood Manor, resides Jackson Bennett—a brooding writer known for his mesmerizing tales of mystery and suspense. Shadows dance across the imposing manor's ivy-clad facade, hinting at the secrets concealed within. Jackson's study overlooks the sprawling gardens, providing him with inspiration as he weaves intricate plots that captivate readers worldwide.
+    
+    Character 3: Lily Chen
+    Address: 317 Cherry Blossom Lane, Serenity Meadows
+    
+    In the idyllic neighborhood of Serenity Meadows, a tranquil abode awaits at 317 Cherry Blossom Lane, the residence of Lily Chen. Her home is a serene sanctuary, surrounded by fragrant cherry blossom trees that paint the landscape with delicate hues. Lily, a dedicated yoga instructor, opens her doors to students seeking balance and mindfulness. The gentle ambiance of her address serves as a testament to her calming presence.
+    
+    Character 4: Max Cooper
+    Address: 912 Harborview Terrace, Ocean's Edge
+    
+    Perched on the edge of a picturesque seaside cliff, Max Cooper's address at 912 Harborview Terrace provides a breathtaking view of the vast ocean expanse. His modern beachfront retreat in Ocean's Edge is a testament to his adventurous spirit and love for the sea. Max, an avid marine biologist, spends his days exploring the depths, unraveling the mysteries of the ocean's inhabitants, and returning home to his address that resonates with the soothing sound of crashing waves.
+    `;
 
     const schema = {
-      $id: "https://blockprotocol.org/@hash/types/entity-type/address/v/2",
-      kind: "entityType",
       title: "Address",
       type: "object",
       description:
@@ -229,7 +247,12 @@ export const createGraphActivities = (createInfo: {
         {
           name: "create_entity_type",
           description: "Creates an entity type from the provided parameters",
-          parameters: schema,
+          parameters: {
+            type: "array",
+            items: {
+              type: JSON.stringify(schema),
+            },
+          },
         },
       ],
       function_call: "none",
