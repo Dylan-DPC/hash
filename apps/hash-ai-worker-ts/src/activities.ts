@@ -139,28 +139,53 @@ export const createGraphActivities = (createInfo: {
     const openai = new OpenAIApi(configuration);
 
     const prompt = `
-    Amelia Hartley, a vivacious young artist with a passion for vibrant colors, resides at 452 Willow Lane in the charming neighborhood of Evergreen Heights. Her cozy address is adorned with blooming flowers and adorned windows, reflecting her imaginative spirit. Within the walls of her quaint cottage, Amelia creates breathtaking paintings that transport viewers to dreamlike realms.
-    At 725 Oakwood Avenue, nestled within the enigmatic Ravenwood Manor, resides Jackson Bennett—a brooding writer known for his mesmerizing tales of mystery and suspense. Shadows dance across the imposing manor's ivy-clad facade, hinting at the secrets concealed within. Jackson's study overlooks the sprawling gardens, providing him with inspiration as he weaves intricate plots that captivate readers worldwide.
-    In the idyllic neighborhood of Serenity Meadows, a tranquil abode awaits at 317 Cherry Blossom Lane, the residence of Lily Chen. Her home is a serene sanctuary, surrounded by fragrant cherry blossom trees that paint the landscape with delicate hues. Lily, a dedicated yoga instructor, opens her doors to students seeking balance and mindfulness. The gentle ambiance of her address serves as a testament to her calming presence.
-    Perched on the edge of a picturesque seaside cliff, Max Cooper's address at 912 Harborview Terrace provides a breathtaking view of the vast ocean expanse. His modern beachfront retreat in Ocean's Edge is a testament to his adventurous spirit and love for the sea. Max, an avid marine biologist, spends his days exploring the depths, unraveling the mysteries of the ocean's inhabitants, and returning home to his address that resonates with the soothing sound of crashing waves.
-    `;
+    John Smith, a hardworking middle-aged man, finds himself in an unusual love triangle with two remarkable women, Sarah Johnson and Emily Williams. John's heart is torn between these two strong-willed and intelligent individuals, leading to a complex and emotionally charged relationship dynamic.
+
+Sarah Johnson, a successful businesswoman, is a confident and independent woman who brings a sense of adventure to John's life. They met during a business conference and were instantly drawn to each other's charismatic personalities. Sarah's ambition and drive match John's own determination, creating a passionate and intense connection between them.
+
+On the other hand, Emily Williams, a compassionate artist, captures John's heart with her gentle and nurturing nature. They met at an art gallery where Emily's captivating paintings left John mesmerized. Emily's creativity and free spirit awaken a sense of vulnerability in John, leading to a deep emotional bond between them.
+
+As the story unfolds, the intricate relationship dynamics between John, Sarah, and Emily become more pronounced. Each person brings a unique set of qualities and experiences, challenging and inspiring one another in different ways. The complexity of their intertwined lives unfolds as they navigate the joys and hardships of love, commitment, and self-discovery`;
 
     const schema = {
       type: "object",
       properties: {
-        address_list: {
+        "https://blockprotocol.org/@examples/types/entity-type/person/v/1": {
           type: "array",
           items: {
+            $schema:
+              "https://blockprotocol.org/types/modules/graph/0.3/schema/entity-type",
+            $id: "https://blockprotocol.org/@examples/types/entity-type/person/v/1",
+            kind: "entityType",
+            title: "Person",
             type: "object",
-            title: "Address",
             description:
-              "Information required to identify a specific location on the planet associated with a postal address.",
+              "An extremely simplified representation of a person or human being.",
+            examples: [],
+            links: {
+              "https://blockprotocol.org/@examples/types/entity-type/employed-by/v/1":
+                {
+                  type: "array",
+                  minItems: 0,
+                  ordered: false,
+                  items: {
+                    oneOf: [
+                      {
+                        $ref: "https://blockprotocol.org/@examples/types/entity-type/company/v/1",
+                      },
+                    ],
+                  },
+                },
+            },
             properties: {
-              "https://blockprotocol.org/@blockprotocol/types/property-type/street-address-line-1/":
+              entity_id: {
+                description: "The unique identifier of the entity.",
+                type: "number",
+              },
+              "https://blockprotocol.org/@blockprotocol/types/property-type/name/":
                 {
-                  title: "Street Address Line 1",
                   description:
-                    "The first line of street information of an address. \n\nConforms to the “address-line1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
+                    "A word or set of words by which something is known, addressed, or referred to.",
                   oneOf: [
                     {
                       title: "Text",
@@ -168,51 +193,11 @@ export const createGraphActivities = (createInfo: {
                       type: "string",
                     },
                   ],
+                  title: "Name",
                 },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/address-level-1/":
+              "https://blockprotocol.org/@examples/types/property-type/e-mail/":
                 {
-                  title: "Address Level 1",
-                  description:
-                    "The broadest administrative level in the address, i.e. the province within which the locality is found; for example, in the US, this would be the state; in Switzerland it would be the canton; in the UK, the post town.\n\nCorresponds to the “address-level1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/postal-code/":
-                {
-                  title: "Postal Code",
-                  description:
-                    "The postal code of an address.\n\nThis should conform to the standards of the area the code is from, for example\n\n- a UK postcode might look like: “SW1A 1AA”\n\n- a US ZIP code might look like: “20500”",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/alpha-2-country-code/":
-                {
-                  title: "Alpha-2 Country Code",
-                  description:
-                    "The short-form of a country’s name.\n\nConforms to the ISO 3166 alpha-2 country code specification.\n\nSee: https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2",
-                  oneOf: [
-                    {
-                      title: "Text",
-                      description: "An ordered sequence of characters",
-                      type: "string",
-                    },
-                  ],
-                },
-              "https://blockprotocol.org/@blockprotocol/types/property-type/mapbox-full-address/":
-                {
-                  title: "Mapbox Full Address",
-                  description:
-                    "A complete address as a string.\n\nConforms to the “full_address” output of the Mapbox Autofill API.\n\nSee: https://docs.mapbox.com/mapbox-search-js/api/core/autofill/#autofillsuggestion#full_address",
+                  description: "An e-mail address.",
                   oneOf: [
                     {
                       title: "Text",
@@ -223,9 +208,44 @@ export const createGraphActivities = (createInfo: {
                 },
             },
             required: [
-              "https://blockprotocol.org/@blockprotocol/types/property-type/street-address-line-1/",
-              "https://blockprotocol.org/@blockprotocol/types/property-type/address-level-1/",
-              "https://blockprotocol.org/@blockprotocol/types/property-type/alpha-2-country-code/",
+              "id",
+              "https://blockprotocol.org/@blockprotocol/types/property-type/name/",
+            ],
+          },
+        },
+        "https://example.org/@examples/types/entity-type/profession/v/1": {
+          type: "array",
+          items: {
+            $schema:
+              "https://blockprotocol.org/types/modules/graph/0.3/schema/entity-type",
+            $id: "https://blockprotocol.org/@examples/types/entity-type/person/v/1",
+            kind: "entityType",
+            title: "Profession",
+            type: "object",
+            description: "The profession of a person or human being.",
+            examples: [],
+            properties: {
+              entity_id: {
+                description: "The unique identifier of the entity.",
+                type: "number",
+              },
+              "https://blockprotocol.org/@blockprotocol/types/property-type/name/":
+                {
+                  description:
+                    "A word or set of words by which something is known, addressed, or referred to.",
+                  oneOf: [
+                    {
+                      title: "Text",
+                      description: "An ordered sequence of characters",
+                      type: "string",
+                    },
+                  ],
+                  title: "Name",
+                },
+            },
+            required: [
+              "id",
+              "https://blockprotocol.org/@blockprotocol/types/property-type/name/",
             ],
           },
         },
@@ -252,20 +272,6 @@ export const createGraphActivities = (createInfo: {
           As an LLM you are good for extracting the information and provide the structured data from it. The entities' shape is defined in the list elements of the function parameter. Extract the information and return the appropriated parameters to call these functions.
           If an information is missing don't ask further questions, just return the function call with the missing parameters. Return an error, if a required parameter is missing.`,
         },
-        // {
-        //   role: "user",
-        //   content: `Homer Simpson is a fictional character from the animated television series "The Simpsons," and his address within the show is 742 Evergreen Terrace, Springfield. However, it's important to note that "The Simpsons" is a work of fiction, and Springfield is a fictional town, so the address does not correspond to a real location.`,
-        // },
-        // {
-        //   role: "assistant",
-        //   content: `[
-        //     {
-        //       "https://blockprotocol.org/@blockprotocol/types/property-type/street-address-line-1/": "742 Evergreen Terrace",
-        //       "https://blockprotocol.org/@blockprotocol/types/property-type/address-level-1/": "Springfield",
-        //       "https://blockprotocol.org/@blockprotocol/types/property-type/mapbox-full-address/": "742 Evergreen Terrace, Springfield"
-        //     }
-        //   ]`,
-        // },
         {
           role: "user",
           content: prompt,
