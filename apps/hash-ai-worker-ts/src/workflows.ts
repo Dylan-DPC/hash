@@ -19,7 +19,7 @@ export const DemoWorkflow = async (prompt: string): Promise<string> => {
 const { getEntityTypeSubgraph } = proxyActivities<
   ReturnType<typeof createGraphActivities>
 >({
-  startToCloseTimeout: "5 minutes",
+  startToCloseTimeout: "20 second",
   retry: {
     maximumAttempts: 1,
   },
