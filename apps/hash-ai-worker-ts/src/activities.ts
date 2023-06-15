@@ -206,7 +206,7 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
                 ],
               },
             },
-            required: ["id", "name"],
+            required: ["entity_id", "name"],
           },
         },
         professions: {
@@ -232,7 +232,29 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
                 title: "Name",
               },
             },
-            required: ["id", "name"],
+            required: ["entity_id", "name"],
+          },
+        },
+        has_profession: {
+          type: "array",
+          items: {
+            type: "object",
+            description: "A relationship between a person and a profession.",
+            properties: {
+              entity_id: {
+                description: "The unique identifier of this link entity.",
+                type: "number",
+              },
+              source_entity: {
+                description: "The source entity of this link entity.",
+                type: "number",
+              },
+              target_entity: {
+                description: "The target entity of this link entity.",
+                type: "number",
+              },
+            },
+            required: ["entity_id", "source_entity", "target_entity"],
           },
         },
       },
@@ -274,6 +296,7 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
     });
 
     console.log(response.data.choices[0]!.message!.function_call?.arguments);
+    console.log(response.data.usage);
     return response.data.choices[0]!.message!.function_call?.arguments;
   },
 });
