@@ -139,7 +139,7 @@ export const createGraphActivities = (createInfo: {
     const openai = new OpenAIApi(configuration);
 
     const prompt = `
-    John Smith, a hardworking middle-aged man, finds himself in an unusual love triangle with two remarkable women, Sarah Johnson and Emily Williams. John's heart is torn between these two strong-willed and intelligent individuals, leading to a complex and emotionally charged relationship dynamic.
+    John Smith from 33659 Bielefeld, Germany, Milky way, a hardworking middle-aged man, finds himself in an unusual love triangle with two remarkable women, Sarah Johnson and Emily Williams. John's heart is torn between these two strong-willed and intelligent individuals, leading to a complex and emotionally charged relationship dynamic.
 
 Sarah Johnson, a successful businesswoman, is a confident and independent woman who brings a sense of adventure to John's life. They met during a business conference and were instantly drawn to each other's charismatic personalities. Sarah's ambition and drive match John's own determination, creating a passionate and intense connection between them.
 
@@ -235,6 +235,57 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
             required: ["entity_id", "name"],
           },
         },
+        address: {
+          type: "array",
+          items: {
+            type: "object",
+            description:
+              "Information required to identify a specific location on the planet associated with a postal address.",
+            properties: {
+              entity_id: {
+                description: "The unique identifier of the entity.",
+                type: "number",
+              },
+              street_address_line_1: {
+                description:
+                  'The first line of street information of an address. \n\nConforms to the "address-line1" field of the "WHATWG Autocomplete Specification".\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1',
+                oneOf: [
+                  {
+                    type: "string",
+                  },
+                ],
+              },
+              address_level_1: {
+                description:
+                  'The broadest administrative level in the address, i.e. the province within which the locality is found; for example, in the US, this would be the state; in Switzerland it would be the canton; in the UK, the post town.\n\nCorresponds to the "address-level1" field of the "WHATWG Autocomplete Specification".\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1',
+                oneOf: [
+                  {
+                    type: "string",
+                  },
+                ],
+              },
+              postal_code: {
+                description:
+                  'The postal code of an address.\n\nThis should conform to the standards of the area the code is from, for example\n\n- a UK postcode might look like: "SW1A 1AA"\n\n- a US ZIP code might look like: "20500"',
+                oneOf: [
+                  {
+                    type: "string",
+                  },
+                ],
+              },
+              alpha_2_country_code: {
+                description:
+                  "The short-form of a country's name.\n\nConforms to the ISO 3166 alpha-2 country code specification.\n\nSee: https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2",
+                oneOf: [
+                  {
+                    type: "string",
+                  },
+                ],
+              },
+            },
+            required: ["entity_id", "name"],
+          },
+        },
         has_profession: {
           type: "array",
           items: {
@@ -252,6 +303,75 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
               target_entity: {
                 description: "The target entity of this link entity.",
                 type: "number",
+              },
+            },
+            required: ["entity_id", "source_entity", "target_entity"],
+          },
+        },
+        has_relation_ship: {
+          type: "array",
+          items: {
+            type: "object",
+            description:
+              "A relationship between two persons, e.g. married, parent, child, etc.",
+            properties: {
+              entity_id: {
+                description: "The unique identifier of this link entity.",
+                type: "number",
+              },
+              source_entity: {
+                description: "The source entity of this link entity.",
+                type: "number",
+              },
+              target_entity: {
+                description: "The target entity of this link entity.",
+                type: "number",
+              },
+              name: {
+                description:
+                  "A word or set of words by which something is known, addressed, or referred to.",
+                oneOf: [
+                  {
+                    title: "Text",
+                    description: "An ordered sequence of characters",
+                    type: "string",
+                  },
+                ],
+                title: "Name",
+              },
+            },
+            required: ["entity_id", "source_entity", "target_entity"],
+          },
+        },
+        lives_at: {
+          type: "array",
+          items: {
+            type: "object",
+            description: "The location where a person lives.",
+            properties: {
+              entity_id: {
+                description: "The unique identifier of this link entity.",
+                type: "number",
+              },
+              source_entity: {
+                description: "The source entity of this link entity.",
+                type: "number",
+              },
+              target_entity: {
+                description: "The target entity of this link entity.",
+                type: "number",
+              },
+              name: {
+                description:
+                  "A word or set of words by which something is known, addressed, or referred to.",
+                oneOf: [
+                  {
+                    title: "Text",
+                    description: "An ordered sequence of characters",
+                    type: "string",
+                  },
+                ],
+                title: "Name",
               },
             },
             required: ["entity_id", "source_entity", "target_entity"],
