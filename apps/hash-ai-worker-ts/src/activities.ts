@@ -5,6 +5,7 @@ import {
   zeroedGraphResolveDepths,
 } from "@apps/hash-api/src/graph";
 import { getEntityTypeSubgraphById } from "@apps/hash-api/src/graph/ontology/primitive/entity-type";
+import { logger } from "@apps/hash-api/src/logger";
 import { StorageType } from "@apps/hash-api/src/storage";
 import { VersionedUrl } from "@blockprotocol/type-system";
 import { getRequiredEnv } from "@local/hash-backend-utils/environment";
@@ -138,24 +139,9 @@ export const createGraphActivities = (createInfo: {
     const openai = new OpenAIApi(configuration);
 
     const prompt = `
-    Character 1: Amelia Hartley
-    Address: 452 Willow Lane, Evergreen Heights
-    
     Amelia Hartley, a vivacious young artist with a passion for vibrant colors, resides at 452 Willow Lane in the charming neighborhood of Evergreen Heights. Her cozy address is adorned with blooming flowers and adorned windows, reflecting her imaginative spirit. Within the walls of her quaint cottage, Amelia creates breathtaking paintings that transport viewers to dreamlike realms.
-    
-    Character 2: Jackson Bennett
-    Address: 725 Oakwood Avenue, Ravenwood Manor
-    
     At 725 Oakwood Avenue, nestled within the enigmatic Ravenwood Manor, resides Jackson Bennett—a brooding writer known for his mesmerizing tales of mystery and suspense. Shadows dance across the imposing manor's ivy-clad facade, hinting at the secrets concealed within. Jackson's study overlooks the sprawling gardens, providing him with inspiration as he weaves intricate plots that captivate readers worldwide.
-    
-    Character 3: Lily Chen
-    Address: 317 Cherry Blossom Lane, Serenity Meadows
-    
     In the idyllic neighborhood of Serenity Meadows, a tranquil abode awaits at 317 Cherry Blossom Lane, the residence of Lily Chen. Her home is a serene sanctuary, surrounded by fragrant cherry blossom trees that paint the landscape with delicate hues. Lily, a dedicated yoga instructor, opens her doors to students seeking balance and mindfulness. The gentle ambiance of her address serves as a testament to her calming presence.
-    
-    Character 4: Max Cooper
-    Address: 912 Harborview Terrace, Ocean's Edge
-    
     Perched on the edge of a picturesque seaside cliff, Max Cooper's address at 912 Harborview Terrace provides a breathtaking view of the vast ocean expanse. His modern beachfront retreat in Ocean's Edge is a testament to his adventurous spirit and love for the sea. Max, an avid marine biologist, spends his days exploring the depths, unraveling the mysteries of the ocean's inhabitants, and returning home to his address that resonates with the soothing sound of crashing waves.
     `;
 
@@ -231,32 +217,26 @@ export const createGraphActivities = (createInfo: {
             ],
           },
       },
-      required: [
-        "https://blockprotocol.org/@blockprotocol/types/property-type/street-address-line-1/",
-        "https://blockprotocol.org/@blockprotocol/types/property-type/address-level-1/",
-        "https://blockprotocol.org/@blockprotocol/types/property-type/postal-code/",
-        "https://blockprotocol.org/@blockprotocol/types/property-type/alpha-2-country-code/",
-      ],
     };
 
     const response = await openai.createChatCompletion({
       model: "gpt-3.5-turbo-0613",
-      temperature: 0,
+      temperature: 0.5,
       max_tokens: 1500,
       functions: [
         {
-          name: "create_entity_type",
+          name: `create_address_entity_type`,
           description: "Creates an entity type from the provided parameters",
           parameters: schema,
         },
       ],
       function_call: "none",
       messages: [
-        {
-          role: "system",
-          content: `You are a LLM and extract information from an unstructured text. The user will you provide this text and 
-            shall generate the appropriated parameters for the function call. Only use the information which were provided. If multiple entities could be created provide a list of possible entities.`,
-        },
+        // {
+        //   role: "system",
+        //   content: `In an environment of a general knowledge store, entities are stored as JSON object consisting of various properties. You should help extracting information from unstructured text to be able to create entities from this text.
+        //   As an LLM you are good for extracting the information and provide the structured data from it. The entities' shape is defined in the function parameter. Extract the information and return the appropriated parameters to call these functions.`,
+        // },
         // {
         //   role: "user",
         //   content: `Homer Simpson is a fictional character from the animated television series "The Simpsons," and his address within the show is 742 Evergreen Terrace, Springfield. However, it's important to note that "The Simpsons" is a work of fiction, and Springfield is a fictional town, so the address does not correspond to a real location.`,
@@ -273,11 +253,18 @@ export const createGraphActivities = (createInfo: {
         // },
         {
           role: "user",
-          content: prompt,
+          content: `
+          In an environment of a general knowledge store, entities are stored as JSON object consisting of various properties. You should help extracting information from unstructured text to be able to create entities from this text.
+          As an LLM you are good for extracting the information and provide the structured data from it. The entities' shape is defined in the function parameter. Extract the information and return the appropriated parameters to call these functions. Please extract
+          the following text into the entity type "Address":
+
+          ${prompt}
+          `,
         },
       ],
     });
 
+    logger.info(JSON.stringify(response.data.choices, null, 2));
     if (response.data.choices[0]!.message!.function_call) {
       return response.data.choices[0]!.message!.function_call;
     }
