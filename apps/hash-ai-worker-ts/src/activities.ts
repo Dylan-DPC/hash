@@ -230,7 +230,6 @@ export const createGraphActivities = (createInfo: {
           parameters: schema,
         },
       ],
-      function_call: "none",
       messages: [
         // {
         //   role: "system",
