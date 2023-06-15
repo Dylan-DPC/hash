@@ -140,49 +140,85 @@ export const createGraphActivities = (createInfo: {
     const prompt = `Amelia Hartley, a vivacious young artist with a passion for vibrant colors, resides at 452 Willow Lane in the charming neighborhood of Evergreen Heights. Her cozy address is adorned with blooming flowers and adorned windows, reflecting her imaginative spirit. Within the walls of her quaint cottage, Amelia creates breathtaking paintings that transport viewers to dreamlike realms.`;
 
     const schema = {
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $id: "https://blockprotocol.org/@hash/types/entity-type/address/v/2",
+      kind: "entityType",
       title: "Address",
       type: "object",
-      $comment:
+      description:
         "Information required to identify a specific location on the planet associated with a postal address.",
       properties: {
-        street_address_line_1: {
-          $comment:
-            "The first line of street information of an address. \n\nConforms to the “address-line1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
-          oneOf: [
-            {
-              type: "string",
-            },
-          ],
-        },
-        address_level_1: {
-          $comment:
-            "The broadest administrative level in the address, i.e. the province within which the locality is found; for example, in the US, this would be the state; in Switzerland it would be the canton; in the UK, the post town.\n\nCorresponds to the “address-level1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
-          oneOf: [
-            {
-              type: "string",
-            },
-          ],
-        },
-        postal_code: {
-          $comment:
-            "The postal code of an address.\n\nThis should conform to the standards of the area the code is from, for example\n\n- a UK postcode might look like: “SW1A 1AA”\n\n- a US ZIP code might look like: “20500”",
-          oneOf: [
-            {
-              type: "string",
-            },
-          ],
-        },
-        alpha_2_country_code: {
-          $comment:
-            "The short-form of a country’s name.\n\nConforms to the ISO 3166 alpha-2 country code specification.\n\nSee: https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2",
-          oneOf: [
-            {
-              type: "string",
-            },
-          ],
-        },
+        "https://blockprotocol.org/@blockprotocol/types/property-type/street-address-line-1/":
+          {
+            title: "Street Address Line 1",
+            description:
+              "The first line of street information of an address. \n\nConforms to the “address-line1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
+            oneOf: [
+              {
+                title: "Text",
+                description: "An ordered sequence of characters",
+                type: "string",
+              },
+            ],
+          },
+        "https://blockprotocol.org/@blockprotocol/types/property-type/address-level-1/":
+          {
+            title: "Address Level 1",
+            description:
+              "The broadest administrative level in the address, i.e. the province within which the locality is found; for example, in the US, this would be the state; in Switzerland it would be the canton; in the UK, the post town.\n\nCorresponds to the “address-level1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
+            oneOf: [
+              {
+                title: "Text",
+                description: "An ordered sequence of characters",
+                type: "string",
+              },
+            ],
+          },
+        "https://blockprotocol.org/@blockprotocol/types/property-type/postal-code/":
+          {
+            title: "Postal Code",
+            description:
+              "The postal code of an address.\n\nThis should conform to the standards of the area the code is from, for example\n\n- a UK postcode might look like: “SW1A 1AA”\n\n- a US ZIP code might look like: “20500”",
+            oneOf: [
+              {
+                title: "Text",
+                description: "An ordered sequence of characters",
+                type: "string",
+              },
+            ],
+          },
+        "https://blockprotocol.org/@blockprotocol/types/property-type/alpha-2-country-code/":
+          {
+            title: "Alpha-2 Country Code",
+            description:
+              "The short-form of a country’s name.\n\nConforms to the ISO 3166 alpha-2 country code specification.\n\nSee: https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2",
+            oneOf: [
+              {
+                title: "Text",
+                description: "An ordered sequence of characters",
+                type: "string",
+              },
+            ],
+          },
+        "https://blockprotocol.org/@blockprotocol/types/property-type/mapbox-full-address/":
+          {
+            title: "Mapbox Full Address",
+            description:
+              "A complete address as a string.\n\nConforms to the “full_address” output of the Mapbox Autofill API.\n\nSee: https://docs.mapbox.com/mapbox-search-js/api/core/autofill/#autofillsuggestion#full_address",
+            oneOf: [
+              {
+                title: "Text",
+                description: "An ordered sequence of characters",
+                type: "string",
+              },
+            ],
+          },
       },
+      required: [
+        "https://blockprotocol.org/@blockprotocol/types/property-type/street-address-line-1/",
+        "https://blockprotocol.org/@blockprotocol/types/property-type/address-level-1/",
+        "https://blockprotocol.org/@blockprotocol/types/property-type/postal-code/",
+        "https://blockprotocol.org/@blockprotocol/types/property-type/alpha-2-country-code/",
+      ],
     };
 
     const response = await openai.createChatCompletion({
