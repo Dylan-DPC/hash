@@ -195,6 +195,18 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
                   ],
                   title: "Name",
                 },
+              "https://blockprotocol.org/@blockprotocol/types/property-type/gender/":
+                {
+                  description: "The gender of a person.",
+                  oneOf: [
+                    {
+                      title: "Text",
+                      description: "An ordered sequence of characters",
+                      type: "string",
+                    },
+                  ],
+                  title: "Gender",
+                },
               "https://blockprotocol.org/@examples/types/property-type/e-mail/":
                 {
                   description: "An e-mail address.",
@@ -268,9 +280,15 @@ As the story unfolds, the intricate relationship dynamics between John, Sarah, a
       messages: [
         {
           role: "system",
-          content: `In an environment of a general knowledge store, entities are stored as JSON object consisting of various properties. You should help extracting information from unstructured text to be able to create entities from this text.
-          As an LLM you are good for extracting the information and provide the structured data from it. The entities' shape is defined in the list elements of the function parameter. Extract the information and return the appropriated parameters to call these functions.
-          If an information is missing don't ask further questions, just return the function call with the missing parameters. Return an error, if a required parameter is missing.`,
+          content: `In an environment of a general knowledge store, entities are stored as JSON object consisting of various properties. To create entity types, information shall be extracted from unstructured data.
+          
+          Each entity is created by calling 'create_entity_type' by passing in a list of properties.
+          
+          You are responsible to extract the information and return the appropriated parameters to call this function.
+
+          If an information is missing don't make new information up, the provided data is the only source of truth.
+          If information is not provided it's not available.
+          Each entity is associated with a unique id. This id is used to reference the entity in the knowledge store. Two entities can never have the same id - even if they are of different types.`,
         },
         {
           role: "user",
