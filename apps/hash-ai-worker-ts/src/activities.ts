@@ -255,7 +255,7 @@ export const createGraphActivities = (createInfo: {
         {
           role: "system",
           content: `You are a LLM and extract information from an unstructured text. The user will you provide this text and 
-            shall generate the appropriated parameters for the function call. Only use the information which were provided.`,
+            shall generate the appropriated parameters for the function call. Only use the information which were provided. If multiple entities could be created provide a list of possible entities.`,
         },
         // {
         //   role: "user",
