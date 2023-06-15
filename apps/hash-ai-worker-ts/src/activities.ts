@@ -247,12 +247,7 @@ export const createGraphActivities = (createInfo: {
         {
           name: "create_entity_type",
           description: "Creates an entity type from the provided parameters",
-          parameters: {
-            type: "array",
-            items: {
-              type: JSON.stringify(schema),
-            },
-          },
+          parameters: schema,
         },
       ],
       function_call: "none",
@@ -283,6 +278,9 @@ export const createGraphActivities = (createInfo: {
       ],
     });
 
+    if (response.data.choices[0]!.message!.function_call) {
+      return response.data.choices[0]!.message!.function_call;
+    }
     return response.data.choices[0]!.message!.content;
   },
 });
