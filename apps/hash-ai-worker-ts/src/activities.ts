@@ -4,21 +4,56 @@ import {
   ImpureGraphContext,
   zeroedGraphResolveDepths,
 } from "@apps/hash-api/src/graph";
-import { getEntityTypeSubgraphById } from "@apps/hash-api/src/graph/ontology/primitive/entity-type";
+import {
+  getEntityTypeSubgraphById,
+  getEntityTypeById,
+} from "@apps/hash-api/src/graph/ontology/primitive/entity-type";
+import {
+  getDataTypeById,
+  getDataTypeSubgraphById,
+} from "@apps/hash-api/src/graph/ontology/primitive/data-type";
+import {
+  getPropertyTypeById,
+  getPropertyTypeSubgraphById,
+} from "@apps/hash-api/src/graph/ontology/primitive/property-type";
 import { logger } from "@apps/hash-api/src/logger";
 import { StorageType } from "@apps/hash-api/src/storage";
-import { VersionedUrl } from "@blockprotocol/type-system";
+import {
+  DataType,
+  PropertyType,
+  EntityType,
+  VersionedUrl,
+  BaseUrl,
+  Object,
+  ValueOrArray,
+  Array,
+  OneOf,
+  AllOf,
+} from "@blockprotocol/type-system";
 import { getRequiredEnv } from "@local/hash-backend-utils/environment";
 import { Logger } from "@local/hash-backend-utils/logger";
 import {
   AccountId,
+  DataTypeRootType,
+  DataTypeWithMetadata,
+  EntityTypeRootType,
+  EntityTypeWithMetadata,
   GraphResolveDepths,
+  isEntityVertexId,
+  isOntologyTypeVertexId,
   OntologyTypeRevisionId,
   OntologyTypeVertexId,
+  PropertyTypeRootType,
+  PropertyTypeWithMetadata,
+  Subgraph,
 } from "@local/hash-subgraph";
 import {
+  getDataTypes,
+  getPropertyTypes,
+  getEntityTypes,
   getPropertyTypeByVertexId,
   getRoots,
+  getPropertyTypeById,
 } from "@local/hash-subgraph/stdlib";
 import { Configuration, OpenAIApi } from "openai";
 
@@ -87,315 +122,225 @@ export const createImpureGraphContext = (): ImpureGraphContext => {
   };
 };
 
+type OntologyType = DataType | PropertyType | EntityType;
+type OntologyTypeWithMetadata =
+  | DataTypeWithMetadata
+  | PropertyTypeWithMetadata
+  | EntityTypeWithMetadata;
+
+type PartialOntologyType<O extends OntologyType> = Omit<
+  O,
+  "$id" | "$schema" | "kind"
+>;
+type PartialOntologyTypeMap<O extends OntologyType> = {
+  [id: VersionedUrl]: PartialOntologyType<O>;
+};
+
+const ontologyTypesToPartialSchemaMap = <O extends OntologyTypeWithMetadata>(
+  ontologyTypes: O[],
+): PartialOntologyTypeMap<O["schema"]> =>
+  ontologyTypes.reduce(
+    (map: PartialOntologyTypeMap<O["schema"]>, ontologyType: O) => {
+      const schema: O["schema"] = ontologyType.schema;
+      const { $id, $schema: _, kind: __, ...partialOntologyType } = schema;
+
+      // eslint-disable-next-line no-param-reassign
+      map[$id] = partialOntologyType;
+      return map;
+    },
+    {},
+  );
+
+type PartialDataType = {
+  title: string;
+  description?: string;
+  type: string;
+};
+type PartialDataTypeMap = { [id: VersionedUrl]: PartialDataType };
+
+type PartialPropertyValues =
+  | PartialDataType
+  | Object<ValueOrArray<PartialPropertyType>>
+  | Array<OneOf<PartialPropertyValues>>;
+interface PartialPropertyType extends OneOf<PartialPropertyValues> {
+  $id: VersionedUrl;
+  title: string;
+  description?: string;
+}
+type PartialPropertyTypeMap = { [id: VersionedUrl]: PartialPropertyType };
+
+interface PartialEntityType
+  extends AllOf<PartialEntityType>,
+    Object<ValueOrArray<PartialPropertyType>> {
+  title: string;
+  description?: string;
+}
+type PartialEntityTypeMap = { [id: VersionedUrl]: PartialEntityType };
+
+const dataTypesToPartialSchemaMap = (
+  dataTypes: DataTypeWithMetadata[],
+): PartialDataTypeMap =>
+  dataTypes.reduce((map: PartialDataTypeMap, dataType) => {
+    // eslint-disable-next-line no-param-reassign
+    map[dataType.schema.$id] = {
+      title: dataType.schema.title,
+      description: dataType.schema.description,
+      type: dataType.schema.type,
+    };
+    return map;
+  }, {});
+
+const processedPropertyTypes: PartialPropertyTypeMap = {};
+
+const processPropertyType = (
+  id: VersionedUrl,
+  propertyType: PropertyType,
+): PartialPropertyType => {
+  if (id in processedPropertyTypes) {
+    return processedPropertyTypes[id]!;
+  }
+
+  processedPropertyTypes[id] = propertyType;
+  for (const [index, oneOf] of propertyType.oneOf.entries()) {
+    if ("$ref" in oneOf) {
+      processedPropertyTypes[id]["oneOf"]![index] = dataTypes[oneOf.$ref];
+    } else if ("properties" in oneOf) {
+      for (const [propertyId, property] of Object.entries(oneOf.properties)) {
+        processPropertyType(property.$ref, propertyTypes[property.$ref]);
+
+        processedPropertyTypes[id]["oneOf"][index]["properties"][
+          processedPropertyTypes[property.$ref].title
+        ] = processedPropertyTypes[property.$ref];
+        delete processedPropertyTypes[id]["oneOf"][index]["properties"][
+          propertyId
+        ];
+      }
+    } else if ("items" in oneOf) {
+      if ("$ref" in oneOf.items) {
+        processPropertyType(oneOf.items.$ref, propertyTypes[oneOf.items.$ref]);
+        processedPropertyTypes[id]["oneOf"][index]["items"] =
+          processedPropertyTypes[oneOf.items.$ref];
+      }
+    }
+  }
+};
+
+const propertyTypesToPartialSchemaMap = (
+  propertyTypes: PropertyTypeWithMetadata[],
+): PartialPropertyTypeMap =>
+  propertyTypes.reduce((map: PartialPropertyTypeMap, propertyType) => {
+    if (propertyType.schema.$id in processedPropertyTypes) {
+      return map;
+    }
+
+    // eslint-disable-next-line no-param-reassign
+    map[propertyType.schema.$id] = {
+      title: propertyType.schema.title,
+      description: propertyType.schema.description,
+      oneOf,
+    };
+    return map;
+  }, {});
+
+const dataTypeCache: { [id: VersionedUrl]: DataTypeWithMetadata } = {};
+const propertyTypeCache: { [id: VersionedUrl]: PropertyTypeWithMetadata } = {};
+const entityTypeCache: { [id: VersionedUrl]: EntityTypeWithMetadata } = {};
+
 export const createGraphActivities = (createInfo: {
   graphContext: ImpureGraphContext;
   actorId: AccountId;
 }) => ({
+  async printTerminal(...args: any[]) {
+    console.log(...args);
+  },
+
+  async getDataType(params: {
+    dataTypeId: VersionedUrl;
+  }): Promise<DataTypeWithMetadata> {
+    if (!(params.dataTypeId in dataTypeCache)) {
+      dataTypeCache[params.dataTypeId] = await getDataTypeById(
+        createInfo.graphContext,
+        {
+          dataTypeId: params.dataTypeId,
+        },
+      );
+    }
+
+    return dataTypeCache[params.dataTypeId]!;
+  },
+
+  async getDataTypeSubgraph(params: {
+    dataTypeId: VersionedUrl;
+    graphResolveDepths?: Partial<GraphResolveDepths>;
+  }): Promise<Subgraph<DataTypeRootType>> {
+    return await getDataTypeSubgraphById(createInfo.graphContext, {
+      dataTypeId: params.dataTypeId,
+      graphResolveDepths: {
+        ...zeroedGraphResolveDepths,
+        ...params.graphResolveDepths,
+      },
+      temporalAxes: currentTimeInstantTemporalAxes,
+      actorId: createInfo.actorId,
+    });
+  },
+
+  async getPropertyType(params: {
+    propertyTypeId: VersionedUrl;
+  }): Promise<PropertyTypeWithMetadata> {
+    if (!(params.propertyTypeId in propertyTypeCache)) {
+      propertyTypeCache[params.propertyTypeId] = await getPropertyTypeById(
+        createInfo.graphContext,
+        {
+          propertyTypeId: params.propertyTypeId,
+        },
+      );
+    }
+
+    return propertyTypeCache[params.propertyTypeId]!;
+  },
+
+  async getPropertyTypeSubgraph(params: {
+    propertyTypeId: VersionedUrl;
+    graphResolveDepths?: Partial<GraphResolveDepths>;
+  }): Promise<Subgraph<PropertyTypeRootType>> {
+    return await getPropertyTypeSubgraphById(createInfo.graphContext, {
+      propertyTypeId: params.propertyTypeId,
+      graphResolveDepths: {
+        ...zeroedGraphResolveDepths,
+        ...params.graphResolveDepths,
+      },
+      temporalAxes: currentTimeInstantTemporalAxes,
+      actorId: createInfo.actorId,
+    });
+  },
+
+  async getEntityType(params: {
+    entityTypeId: VersionedUrl;
+  }): Promise<EntityTypeWithMetadata> {
+    if (!(params.entityTypeId in entityTypeCache)) {
+      entityTypeCache[params.entityTypeId] = await getEntityTypeById(
+        createInfo.graphContext,
+        {
+          entityTypeId: params.entityTypeId,
+        },
+      );
+    }
+
+    return entityTypeCache[params.entityTypeId]!;
+  },
+
   async getEntityTypeSubgraph(params: {
     entityTypeId: VersionedUrl;
     graphResolveDepths?: Partial<GraphResolveDepths>;
-  }): Promise<any> {
-    // const subgraph = await getEntityTypeSubgraphById(createInfo.graphContext, {
-    //   entityTypeId: params.entityTypeId,
-    //   graphResolveDepths: {
-    //     ...zeroedGraphResolveDepths,
-    //     ...params.graphResolveDepths,
-    //     constrainsPropertiesOn: { outgoing: 1 },
-    //   },
-    //   temporalAxes: currentTimeInstantTemporalAxes,
-    //   actorId: createInfo.actorId,
-    // });
-
-    // const roots = getRoots(subgraph);
-    // if (roots.length !== 1) {
-    //   throw new Error(
-    //     `Expected exactly one root entity, but found ${roots.length} roots.`,
-    //   );
-    // }
-    // const root = roots[0]!;
-
-    // const title = root.schema.title;
-    // const description = root.schema.description;
-
-    // const rootEdges =
-    //   subgraph.edges[root.metadata.recordId.baseUrl]?.[
-    //     root.metadata.recordId.version.toString() as OntologyTypeRevisionId
-    //   ];
-
-    // const rootPropertyTypes = rootEdges
-    //   ?.filter(({ kind }) => kind === "CONSTRAINS_PROPERTIES_ON")
-    //   .map(({ rightEndpoint }) => {
-    //     return getPropertyTypeByVertexId(
-    //       subgraph,
-    //       rightEndpoint as OntologyTypeVertexId,
-    //     )!;
-    //   });
-
-    const apiKey = getRequiredEnv("OPENAI_API_KEY");
-
-    const configuration = new Configuration({
-      apiKey,
-    });
-    const openai = new OpenAIApi(configuration);
-
-    const prompt = `
-    John Smith from 33333 Bielefeld, Germany, Milky way, a hardworking middle-aged man, finds himself in an unusual love triangle with two remarkable women, Sarah Johnson and Emily Williams. John's heart is torn between these two strong-willed and intelligent individuals, leading to a complex and emotionally charged relationship dynamic.
-
-Sarah Johnson, a successful businesswoman, is a confident and independent woman who brings a sense of adventure to John's life. They met during a business conference and were instantly drawn to each other's charismatic personalities. Sarah's ambition and drive match John's own determination, creating a passionate and intense connection between them.
-
-On the other hand, Emily Williams, a compassionate artist, captures John's heart with her gentle and nurturing nature. They met at an art gallery where Emily's captivating paintings left John mesmerized. Emily's creativity and free spirit awaken a sense of vulnerability in John, leading to a deep emotional bond between them.
-
-As the story unfolds, the intricate relationship dynamics between John, Sarah, and Emily become more pronounced. Each person brings a unique set of qualities and experiences, challenging and inspiring one another in different ways. The complexity of their intertwined lives unfolds as they navigate the joys and hardships of love, commitment, and self-discovery`;
-
-    const schema = {
-      type: "object",
-      $defs: {
-        entity_id: {
-          description: "The unique identifier of the entity.",
-          type: "number",
-        },
-        property_types: {
-          name: {
-            title: "Name",
-            description:
-              "A word or set of words by which something is known, addressed, or referred to.",
-            oneOf: [
-              {
-                type: "string",
-              },
-            ],
-          },
-          e_mail: {
-            title: "E-Mail",
-            description: "An e-mail address.",
-            oneOf: [
-              {
-                type: "string",
-              },
-            ],
-          },
-          street_address_line_1: {
-            title: "Street Address Line 1",
-            description:
-              "The first line of street information of an address. \n\nConforms to the “address-line1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
-            oneOf: [
-              {
-                type: "string",
-              },
-            ],
-          },
-          address_level_1: {
-            title: "Address Level 1",
-            description:
-              "The broadest administrative level in the address, i.e. the province within which the locality is found; for example, in the US, this would be the state; in Switzerland it would be the canton; in the UK, the post town.\n\nCorresponds to the “address-level1” field of the “WHATWG Autocomplete Specification”.\n\nSee: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-autocomplete-address-level1",
-            oneOf: [
-              {
-                type: "string",
-              },
-            ],
-          },
-          postal_code: {
-            title: "Postal Code",
-            description:
-              "The postal code of an address.\n\nThis should conform to the standards of the area the code is from, for example\n\n- a UK postcode might look like: “SW1A 1AA”\n\n- a US ZIP code might look like: “20500”",
-            oneOf: [
-              {
-                type: "number",
-              },
-            ],
-          },
-          alpha_2_country_code: {
-            title: "Alpha-2 Country Code",
-            description:
-              "The short-form of a country’s name.\n\nConforms to the ISO 3166 alpha-2 country code specification.\n\nSee: https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2",
-            oneOf: [
-              {
-                type: "string",
-              },
-            ],
-          },
-          mapbox_full_address: {
-            title: "Mapbox Full Address",
-            description:
-              "A complete address as a string.\n\nConforms to the “full_address” output of the Mapbox Autofill API.\n\nSee: https://docs.mapbox.com/mapbox-search-js/api/core/autofill/#autofillsuggestion#full_address",
-            oneOf: [
-              {
-                type: "string",
-              },
-            ],
-          },
-        },
+  }): Promise<Subgraph<EntityTypeRootType>> {
+    return await getEntityTypeSubgraphById(createInfo.graphContext, {
+      entityTypeId: params.entityTypeId,
+      graphResolveDepths: {
+        ...zeroedGraphResolveDepths,
+        ...params.graphResolveDepths,
       },
-      properties: {
-        persons: {
-          type: "array",
-          items: {
-            title: "Person",
-            type: "object",
-            description:
-              "An extremely simplified representation of a person or human being.",
-            properties: {
-              entity_id: {
-                $ref: "#/$defs/entity_id",
-              },
-              name: {
-                $ref: "#/$defs/property_types/name",
-              },
-              e_mail: {
-                $ref: "#/$defs/property_types/e_mail",
-              },
-            },
-            required: ["name"],
-          },
-        },
-        professions: {
-          type: "array",
-          items: {
-            type: "object",
-            description: "The profession of a person or human being.",
-            properties: {
-              entity_id: {
-                $ref: "#/$defs/entity_id",
-              },
-              name: {
-                $ref: "#/$defs/property_types/name",
-              },
-            },
-            required: ["entity_id", "name"],
-          },
-        },
-        address: {
-          type: "array",
-          items: {
-            type: "object",
-            description:
-              "Information required to identify a specific location on the planet associated with a postal address.",
-            properties: {
-              entity_id: {
-                $ref: "#/$defs/entity_id",
-              },
-              street_address_line_1: {
-                $ref: "#/$defs/property_types/street_address_line_1",
-              },
-              address_level_1: {
-                $ref: "#/$defs/property_types/address_level_1",
-              },
-              postal_code: {
-                $ref: "#/$defs/property_types/postal_code",
-              },
-              alpha_2_country_code: {
-                $ref: "#/$defs/property_types/alpha_2_country_code",
-              },
-              mapbox_full_address: {
-                $ref: "#/$defs/property_types/mapbox_full_address",
-              },
-            },
-          },
-        },
-        has_profession: {
-          type: "array",
-          items: {
-            type: "object",
-            description: "A relationship between a person and a profession.",
-            properties: {
-              entity_id: {
-                $ref: "#/$defs/entity_id",
-              },
-              source_entity: {
-                $ref: "#/$defs/entity_id",
-              },
-              target_entity: {
-                $ref: "#/$defs/entity_id",
-              },
-            },
-            required: ["entity_id", "source_entity", "target_entity"],
-          },
-        },
-        has_relation_ship: {
-          type: "array",
-          items: {
-            type: "object",
-            description:
-              "A relationship between two persons, e.g. married, parent, child, etc.",
-            properties: {
-              entity_id: {
-                $ref: "#/$defs/entity_id",
-              },
-              source_entity: {
-                $ref: "#/$defs/entity_id",
-              },
-              target_entity: {
-                $ref: "#/$defs/entity_id",
-              },
-              name: {
-                $ref: "#/$defs/property_types/name",
-              },
-            },
-            required: ["entity_id", "source_entity", "target_entity"],
-          },
-        },
-        has_associated_location: {
-          type: "array",
-          items: {
-            type: "object",
-            description: "The location which is associated with a person.",
-            properties: {
-              entity_id: {
-                $ref: "#/$defs/entity_id",
-              },
-              source_entity: {
-                $ref: "#/$defs/entity_id",
-              },
-              target_entity: {
-                $ref: "#/$defs/entity_id",
-              },
-              name: {
-                $ref: "#/$defs/property_types/name",
-              },
-            },
-            required: ["entity_id", "source_entity", "target_entity"],
-          },
-        },
-      },
-    };
-
-    const response = await openai.createChatCompletion({
-      model: "gpt-4-0613",
-      temperature: 0,
-      max_tokens: 1500,
-      functions: [
-        {
-          name: `create_entities_from_property_list`,
-          description:
-            "Creates a list of entities from the provided list of properties",
-          parameters: schema,
-        },
-      ],
-      function_call: { name: "create_entities_from_property_list" },
-      messages: [
-        {
-          role: "system",
-          content: `In an environment of a general knowledge store, entities are stored as JSON object consisting of various properties. To create entity types, information shall be extracted from unstructured data.
-          
-          Each entity is created by calling 'create_entity_type' by passing in a list of properties.
-          
-          You are responsible to extract the information and return the appropriated parameters to call this function.
-
-          If an information is missing don't make new information up, the provided data is the only source of truth.
-          If information is not provided it's not available.
-          If information is not strictly required it's optional.
-          If information is not explicitly stated it must not be assumed.
-          Each entity is associated with a unique id. This id is used to reference the entity in the knowledge store. Two entities can never have the same id - even if they are of different types.`,
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      temporalAxes: currentTimeInstantTemporalAxes,
+      actorId: createInfo.actorId,
     });
-
-    console.log(response.data.choices[0]!.message!.function_call?.arguments);
-    console.log(response.data.usage);
-    return response.data.choices[0]!.message!.function_call?.arguments;
   },
 });
