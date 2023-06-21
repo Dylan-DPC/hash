@@ -31,10 +31,10 @@ import {
   PropertyTypeWithMetadata,
   Subgraph,
 } from "@local/hash-subgraph";
+import { getEntityTypes, getRoots } from "@local/hash-subgraph/stdlib";
 import { Configuration, OpenAIApi } from "openai";
 
 import { PartialEntityType } from "./workflows";
-import { getRoots } from "@local/hash-subgraph/stdlib";
 
 export const complete = async (prompt: string): Promise<string> => {
   const apiKey = getRequiredEnv("OPENAI_API_KEY");
@@ -332,5 +332,22 @@ export const createGraphActivities = (createInfo: {
       temporalAxes: currentTimeInstantTemporalAxes,
       actorId: createInfo.actorId,
     });
+  },
+
+  async getEntityTypeIds(params: {
+    entityTypeId: VersionedUrl;
+    graphResolveDepths?: Partial<GraphResolveDepths>;
+  }): Promise<VersionedUrl[]> {
+    return await getEntityTypeSubgraphById(createInfo.graphContext, {
+      entityTypeId: params.entityTypeId,
+      graphResolveDepths: {
+        ...zeroedGraphResolveDepths,
+        ...params.graphResolveDepths,
+      },
+      temporalAxes: currentTimeInstantTemporalAxes,
+      actorId: createInfo.actorId,
+    }).then((subgraph) =>
+      getEntityTypes(subgraph).map((entity_type) => entity_type.schema.$id),
+    );
   },
 });

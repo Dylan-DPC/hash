@@ -33,6 +33,7 @@ export const {
   getPropertyTypeSubgraph,
   getEntityType,
   getEntityTypeSubgraph,
+  getEntityTypeIds,
   createEntities,
 } = proxyActivities<ReturnType<typeof createGraphActivities>>({
   startToCloseTimeout: "180 second",
@@ -195,20 +196,32 @@ const getPartialEntityType = async (
 export async function createEntitiesForEntityTypes(params: {
   entityTypeIds: VersionedUrl[];
   prompt: string;
+  depth: number;
 }): Promise<any> {
+  const allEntityTypeIds = await Promise.all(
+    params.entityTypeIds.map(
+      async (entityTypeId) =>
+        await getEntityTypeIds({
+          entityTypeId,
+          graphResolveDepths: {
+            constrainsLinksOn: { outgoing: params.depth },
+            constrainsLinkDestinationsOn: { outgoing: params.depth },
+          },
+        }),
+    ),
+  ).then((entityTypeIds) => entityTypeIds.flat());
+
+  console.log(allEntityTypeIds);
+
   const entityTypeSchemas = await Promise.all(
-    params.entityTypeIds.map(getPartialEntityType),
+    allEntityTypeIds.map(async (id) => await getPartialEntityType(id)),
   );
-
-  const prompt = `
-        John Smith from 33333 Bielefeld, Germany, Milky way, a hardworking middle-aged man at HASH, finds himself in an unusual love triangle with two remarkable women, Sarah Johnson and Emily Williams. John's heart is torn between these two strong-willed and intelligent individuals, leading to a complex and emotionally charged relationship dynamic.
-    Sarah Johnson, a successful businesswoman, is a confident and independent woman who brings a sense of adventure to John's life. They met during a business conference and were instantly drawn to each other's charismatic personalities. Sarah's ambition and drive match John's own determination, creating a passionate and intense connection between them.
-    On the other hand, Emily Williams, a compassionate artist, captures John's heart with her gentle and nurturing nature. They met at an art gallery where Emily's captivating paintings left John mesmerized. Emily's creativity and free spirit awaken a sense of vulnerability in John, leading to a deep emotional bond between them.
-    As the story unfolds, the intricate relationship dynamics between John, Sarah, and Emily become more pronounced. Each person brings a unique set of qualities and experiences, challenging and inspiring one another in different ways. The complexity of their intertwined lives unfolds as they navigate the joys and hardships of love, commitment, and self-discovery`;
-
   console.log(JSON.stringify({ entityTypeSchemas }, null, 2));
 
-  const entities = await createEntities({ entityTypeSchemas, prompt });
+  const entities = await createEntities({
+    entityTypeSchemas,
+    prompt: params.prompt,
+  });
 
   console.log(entities);
 
