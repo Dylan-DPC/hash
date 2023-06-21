@@ -33,14 +33,15 @@ export const {
   getPropertyTypeSubgraph,
   getEntityType,
   getEntityTypeSubgraph,
+  createEntities,
 } = proxyActivities<ReturnType<typeof createGraphActivities>>({
-  startToCloseTimeout: "20 second",
+  startToCloseTimeout: "60 second",
   retry: {
     maximumAttempts: 1,
   },
 });
 
-type PartialDataType = {
+export type PartialDataType = {
   title: string;
   description?: string;
   type: string;
@@ -48,7 +49,7 @@ type PartialDataType = {
 type PartialDataTypeMap = { [id: VersionedUrl]: PartialDataType };
 const partialDataTypeCache: PartialDataTypeMap = {};
 
-type PartialPropertyValues =
+export type PartialPropertyValues =
   | PartialDataType
   | TypeSystemObject<ValueOrArray<PartialPropertyType>>
   | TypeSystemArray<OneOf<PartialPropertyValues>>;
@@ -60,11 +61,12 @@ type PartialPropertyType = OneOf<PartialPropertyValues> & {
 type PartialPropertyTypeMap = { [id: VersionedUrl]: PartialPropertyType };
 const partialPropertyTypeCache: PartialPropertyTypeMap = {};
 
-interface PartialEntityType
+export interface PartialEntityType
   extends AllOf<PartialEntityType>,
     TypeSystemObject<ValueOrArray<PartialPropertyType>> {
   title: string;
   description?: string;
+  $id: VersionedUrl;
 }
 type PartialEntityTypeMap = { [id: VersionedUrl]: PartialEntityType };
 const partialEntityTypeCache: PartialEntityTypeMap = {};
@@ -172,6 +174,7 @@ const getPartialEntityType = async (
     partialEntityTypeCache[entityTypeId] = {
       title: entityType.schema.title,
       description: entityType.schema.description,
+      $id: entityType.schema.$id,
       type: "object",
       allOf: entityType.schema.allOf
         ? await Promise.all(
@@ -191,10 +194,21 @@ export async function createEntitiesForEntityTypes(params: {
   entityTypeIds: VersionedUrl[];
   prompt: string;
 }): Promise<any> {
-  const entity_types = await Promise.all(
+  const entityTypeSchemas = await Promise.all(
     params.entityTypeIds.map(getPartialEntityType),
   );
-  console.log(JSON.stringify({ entity_types }, null, 2));
 
-  return entity_types;
+  const prompt = `
+        John Smith from 33333 Bielefeld, Germany, Milky way, a hardworking middle-aged man at HASH, finds himself in an unusual love triangle with two remarkable women, Sarah Johnson and Emily Williams. John's heart is torn between these two strong-willed and intelligent individuals, leading to a complex and emotionally charged relationship dynamic.
+    Sarah Johnson, a successful businesswoman, is a confident and independent woman who brings a sense of adventure to John's life. They met during a business conference and were instantly drawn to each other's charismatic personalities. Sarah's ambition and drive match John's own determination, creating a passionate and intense connection between them.
+    On the other hand, Emily Williams, a compassionate artist, captures John's heart with her gentle and nurturing nature. They met at an art gallery where Emily's captivating paintings left John mesmerized. Emily's creativity and free spirit awaken a sense of vulnerability in John, leading to a deep emotional bond between them.
+    As the story unfolds, the intricate relationship dynamics between John, Sarah, and Emily become more pronounced. Each person brings a unique set of qualities and experiences, challenging and inspiring one another in different ways. The complexity of their intertwined lives unfolds as they navigate the joys and hardships of love, commitment, and self-discovery`;
+
+  console.log(JSON.stringify({ entityTypeSchemas }, null, 2));
+
+  const entities = await createEntities({ entityTypeSchemas, prompt });
+
+  console.log(entities);
+
+  return entities;
 }
