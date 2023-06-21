@@ -34,6 +34,7 @@ import {
 import { Configuration, OpenAIApi } from "openai";
 
 import { PartialEntityType } from "./workflows";
+import { getRoots } from "@local/hash-subgraph/stdlib";
 
 export const complete = async (prompt: string): Promise<string> => {
   const apiKey = getRequiredEnv("OPENAI_API_KEY");
@@ -192,154 +193,26 @@ export const createGraphActivities = (createInfo: {
     });
 
     return response.data.choices[0]!.message!.function_call?.arguments;
-    // console.log(response.data.choices[0]!.message!.function_call?.arguments);
-    // console.log(response.data.usage);
-    // return response.data.choices[0]!.message!.function_call?.arguments;
-    // const schema = {
-    //   type: "object",
-    //   $defs: {
-    //     entity_id: {
-    //       description: "The unique identifier of the entity.",
-    //       type: "number",
-    //     },
-    //   properties: {
-    //     persons: {
-    //       type: "array",
-    //       items: {
-    //         title: "Person",
-    //         type: "object",
-    //         description:
-    //           "An extremely simplified representation of a person or human being.",
-    //         properties: {
-    //           entity_id: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           name: {
-    //             $ref: "#/$defs/property_types/name",
-    //           },
-    //           e_mail: {
-    //             $ref: "#/$defs/property_types/e_mail",
-    //           },
-    //         },
-    //         required: ["name"],
-    //       },
-    //     },
-    //     professions: {
-    //       type: "array",
-    //       items: {
-    //         type: "object",
-    //         description: "The profession of a person or human being.",
-    //         properties: {
-    //           entity_id: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           name: {
-    //             $ref: "#/$defs/property_types/name",
-    //           },
-    //         },
-    //         required: ["entity_id", "name"],
-    //       },
-    //     },
-    //     address: {
-    //       type: "array",
-    //       items: {
-    //         type: "object",
-    //         description:
-    //           "Information required to identify a specific location on the planet associated with a postal address.",
-    //         properties: {
-    //           entity_id: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           street_address_line_1: {
-    //             $ref: "#/$defs/property_types/street_address_line_1",
-    //           },
-    //           address_level_1: {
-    //             $ref: "#/$defs/property_types/address_level_1",
-    //           },
-    //           postal_code: {
-    //             $ref: "#/$defs/property_types/postal_code",
-    //           },
-    //           alpha_2_country_code: {
-    //             $ref: "#/$defs/property_types/alpha_2_country_code",
-    //           },
-    //           mapbox_full_address: {
-    //             $ref: "#/$defs/property_types/mapbox_full_address",
-    //           },
-    //         },
-    //       },
-    //     },
-    //     has_profession: {
-    //       type: "array",
-    //       items: {
-    //         type: "object",
-    //         description: "A relationship between a person and a profession.",
-    //         properties: {
-    //           entity_id: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           source_entity: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           target_entity: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //         },
-    //         required: ["entity_id", "source_entity", "target_entity"],
-    //       },
-    //     },
-    //     has_relation_ship: {
-    //       type: "array",
-    //       items: {
-    //         type: "object",
-    //         description:
-    //           "A relationship between two persons, e.g. married, parent, child, etc.",
-    //         properties: {
-    //           entity_id: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           source_entity: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           target_entity: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           name: {
-    //             $ref: "#/$defs/property_types/name",
-    //           },
-    //         },
-    //         required: ["entity_id", "source_entity", "target_entity"],
-    //       },
-    //     },
-    //     has_associated_location: {
-    //       type: "array",
-    //       items: {
-    //         type: "object",
-    //         description: "The location which is associated with a person.",
-    //         properties: {
-    //           entity_id: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           source_entity: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           target_entity: {
-    //             $ref: "#/$defs/entity_id",
-    //           },
-    //           name: {
-    //             $ref: "#/$defs/property_types/name",
-    //           },
-    //         },
-    //         required: ["entity_id", "source_entity", "target_entity"],
-    //       },
-    //     },
-    //   },
-    // };
   },
 
   async getDataType(params: {
     dataTypeId: VersionedUrl;
   }): Promise<DataTypeWithMetadata> {
     if (!(params.dataTypeId in dataTypeCache)) {
+      const [dataType] = await getDataTypeSubgraphById(
+        createInfo.graphContext,
+        {
+          dataTypeId: params.dataTypeId,
+          graphResolveDepths: zeroedGraphResolveDepths,
+          temporalAxes: currentTimeInstantTemporalAxes,
+          actorId: createInfo.actorId,
+        },
+      ).then(getRoots);
+
+      if (!dataType) {
+        throw new Error(`Data type with ID ${params.dataTypeId} not found.`);
+      }
+
       dataTypeCache[params.dataTypeId] = await getDataTypeById(
         createInfo.graphContext,
         {
@@ -370,6 +243,22 @@ export const createGraphActivities = (createInfo: {
     propertyTypeId: VersionedUrl;
   }): Promise<PropertyTypeWithMetadata> {
     if (!(params.propertyTypeId in propertyTypeCache)) {
+      const [propertyType] = await getPropertyTypeSubgraphById(
+        createInfo.graphContext,
+        {
+          propertyTypeId: params.propertyTypeId,
+          graphResolveDepths: zeroedGraphResolveDepths,
+          temporalAxes: currentTimeInstantTemporalAxes,
+          actorId: createInfo.actorId,
+        },
+      ).then(getRoots);
+
+      if (!propertyType) {
+        throw new Error(
+          `Property type with ID ${params.propertyTypeId} not found.`,
+        );
+      }
+
       propertyTypeCache[params.propertyTypeId] = await getPropertyTypeById(
         createInfo.graphContext,
         {
@@ -400,6 +289,20 @@ export const createGraphActivities = (createInfo: {
     entityTypeId: VersionedUrl;
   }): Promise<EntityTypeWithMetadata> {
     if (!(params.entityTypeId in entityTypeCache)) {
+      const [entityType] = await getEntityTypeSubgraphById(
+        createInfo.graphContext,
+        {
+          entityTypeId: params.entityTypeId,
+          graphResolveDepths: zeroedGraphResolveDepths,
+          temporalAxes: currentTimeInstantTemporalAxes,
+          actorId: createInfo.actorId,
+        },
+      ).then(getRoots);
+
+      if (!entityType) {
+        throw new Error(`No entity type found for ${params.entityTypeId}`);
+      }
+
       entityTypeCache[params.entityTypeId] = await getEntityTypeById(
         createInfo.graphContext,
         {

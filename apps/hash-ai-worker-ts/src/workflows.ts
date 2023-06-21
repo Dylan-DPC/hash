@@ -35,7 +35,7 @@ export const {
   getEntityTypeSubgraph,
   createEntities,
 } = proxyActivities<ReturnType<typeof createGraphActivities>>({
-  startToCloseTimeout: "60 second",
+  startToCloseTimeout: "180 second",
   retry: {
     maximumAttempts: 1,
   },
