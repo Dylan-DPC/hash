@@ -67,6 +67,7 @@ export interface PartialEntityType
   title: string;
   description?: string;
   $id: VersionedUrl;
+  additionalProperties: false;
 }
 type PartialEntityTypeMap = { [id: VersionedUrl]: PartialEntityType };
 const partialEntityTypeCache: PartialEntityTypeMap = {};
@@ -184,6 +185,7 @@ const getPartialEntityType = async (
           )
         : [],
       properties: await convertPropertyObject(entityType.schema.properties),
+      additionalProperties: false,
     };
   }
 

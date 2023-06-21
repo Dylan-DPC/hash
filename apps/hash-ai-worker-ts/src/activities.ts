@@ -123,7 +123,7 @@ export const createGraphActivities = (createInfo: {
       },
       properties: Object.fromEntries(
         params.entityTypeSchemas.map((entityTypeSchema) => {
-          const entitySchema: object = {
+          const entitySchema = {
             type: "array",
             items: {
               title: "Entity",
@@ -132,10 +132,12 @@ export const createGraphActivities = (createInfo: {
                 entityId: {
                   $ref: "#/$defs/entity_id",
                 },
-                entityProperties: entityTypeSchema,
               },
             },
           };
+
+          const entityTypeId = entityTypeSchema.$id;
+          delete entityTypeSchema.$id;
 
           if (entityTypeSchema.allOf[0]?.title === "Link") {
             entitySchema.items.properties.sourceEntityId = {
@@ -146,9 +148,12 @@ export const createGraphActivities = (createInfo: {
             };
           }
 
-          delete entitySchema.items.properties.entityProperties.allOf;
+          if (Object.keys(entityTypeSchema.properties).length !== 0) {
+            entitySchema.items.properties.entityProperties = entityTypeSchema;
+            delete entitySchema.items.properties.entityProperties.allOf;
+          }
 
-          return [entityTypeSchema.$id, entitySchema];
+          return [entityTypeId, entitySchema];
         }),
       ),
     };
