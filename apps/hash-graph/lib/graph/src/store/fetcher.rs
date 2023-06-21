@@ -160,11 +160,6 @@ struct FetchedOntologyTypes {
     entity_types: Vec<(EntityType, OntologyElementMetadata)>,
 }
 
-enum FetchBehavior {
-    IncludeProvidedReferences,
-    ExcludeProvidedReferences,
-}
-
 impl<'t, S, A> FetchingStore<S, A>
 where
     A: ToSocketAddrs + Send + Sync,
@@ -228,17 +223,20 @@ where
     async fn collect_external_ontology_types<'o, T: crate::ontology::OntologyType + Sync>(
         &self,
         ontology_type: &'o T,
-    ) -> Result<Vec<OntologyTypeReference<'o>>, QueryError> {
-        let mut references = Vec::new();
+    ) -> Result<HashSet<OntologyTypeReference<'o>>, QueryError> {
+        let mut references = HashSet::new();
+        println!("ontology_type: {:?}", ontology_type.id());        
         for reference in ontology_type.traverse_references() {
-            if !self
+            println!("reference: {:?}", reference.url());
+            if ontology_type.id() != reference.url() && !self
                 .contains_ontology_type(reference)
                 .await
                 .change_context(QueryError)?
             {
-                references.push(reference);
+                references.insert(reference);
             }
         }
+
 
         Ok(references)
     }
@@ -247,17 +245,11 @@ where
         &self,
         ontology_type_references: Vec<VersionedUrl>,
         actor_id: RecordCreatedById,
-        fetch_behavior: FetchBehavior,
     ) -> Result<FetchedOntologyTypes, StoreError> {
         let provenance_metadata = ProvenanceMetadata::new(actor_id);
 
         let mut queue = ontology_type_references;
-        let mut seen = match fetch_behavior {
-            FetchBehavior::IncludeProvidedReferences => HashSet::new(),
-            FetchBehavior::ExcludeProvidedReferences => {
-                queue.iter().cloned().collect::<HashSet<_>>()
-            }
-        };
+        let mut seen = queue.iter().cloned().collect::<HashSet<_>>();
 
         let mut fetched_ontology_types = FetchedOntologyTypes::default();
 
@@ -347,6 +339,8 @@ where
                                 queue.push(referenced_ontology_type.url().clone());
                                 seen.insert(referenced_ontology_type.url().clone());
                             }
+                            println!("seen: {:?}", seen);
+                            println!("queue: {:?}", queue);
                         }
 
                         fetched_ontology_types
@@ -394,7 +388,6 @@ where
                 .fetch_external_ontology_types(
                     ontology_types_to_fetch,
                     actor_id,
-                    FetchBehavior::ExcludeProvidedReferences,
                 )
                 .await
                 .change_context(InsertionError)?;
@@ -421,7 +414,6 @@ where
         reference: OntologyTypeReference<'_>,
         actor_id: RecordCreatedById,
         on_conflict: ConflictBehavior,
-        fetch_behavior: FetchBehavior,
     ) -> Result<Vec<OntologyElementMetadata>, InsertionError> {
         if on_conflict == ConflictBehavior::Fail
             || !self
@@ -433,7 +425,6 @@ where
                 .fetch_external_ontology_types(
                     vec![reference.url().clone()],
                     actor_id,
-                    fetch_behavior,
                 )
                 .await
                 .change_context(InsertionError)?;
@@ -491,7 +482,6 @@ where
             reference,
             actor_id,
             ConflictBehavior::Fail,
-            FetchBehavior::IncludeProvidedReferences,
         )
         .await?
         .into_iter()
@@ -721,7 +711,6 @@ where
             OntologyTypeReference::EntityTypeReference(&entity_type_reference),
             record_created_by_id,
             ConflictBehavior::Skip,
-            FetchBehavior::ExcludeProvidedReferences,
         )
         .await?;
 
@@ -761,7 +750,6 @@ where
             OntologyTypeReference::EntityTypeReference(&entity_type_reference),
             actor_id,
             ConflictBehavior::Skip,
-            FetchBehavior::ExcludeProvidedReferences,
         )
         .await?;
 
@@ -789,7 +777,6 @@ where
             OntologyTypeReference::EntityTypeReference(&entity_type_reference),
             record_created_by_id,
             ConflictBehavior::Skip,
-            FetchBehavior::ExcludeProvidedReferences,
         )
         .await
         .change_context(UpdateError)?;
