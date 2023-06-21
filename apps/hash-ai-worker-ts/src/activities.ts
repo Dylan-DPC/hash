@@ -197,6 +197,9 @@ export const createGraphActivities = (createInfo: {
       ],
     });
 
+    const usage = response.data.usage;
+    console.log({ usage });
+
     return response.data.choices[0]!.message!.function_call?.arguments;
   },
 
