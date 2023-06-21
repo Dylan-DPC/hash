@@ -225,9 +225,7 @@ where
         ontology_type: &'o T,
     ) -> Result<HashSet<OntologyTypeReference<'o>>, QueryError> {
         let mut references = HashSet::new();
-        println!("ontology_type: {:?}", ontology_type.id());        
         for reference in ontology_type.traverse_references() {
-            println!("reference: {:?}", reference.url());
             if ontology_type.id() != reference.url() && !self
                 .contains_ontology_type(reference)
                 .await
@@ -339,8 +337,6 @@ where
                                 queue.push(referenced_ontology_type.url().clone());
                                 seen.insert(referenced_ontology_type.url().clone());
                             }
-                            println!("seen: {:?}", seen);
-                            println!("queue: {:?}", queue);
                         }
 
                         fetched_ontology_types
