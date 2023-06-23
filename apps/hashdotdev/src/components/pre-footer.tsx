@@ -71,10 +71,8 @@ export const Subscribe: FunctionComponent<BoxProps> = (props) => {
           {
             py: 8,
             px: 20,
-            border: 2,
-            borderColor: "orange.400",
             textAlign: "center",
-
+            background: "#F2F9FB",
             ".MuiTypography-hashHeading2": {
               mb: {
                 xs: 1.5,
@@ -122,12 +120,12 @@ export const Subscribe: FunctionComponent<BoxProps> = (props) => {
         ) : (
           <>
             <Typography variant="hashHeading2" component="h3">
-              Stay up to date with HASH news
+              Be the first to know...
             </Typography>
             <Typography mb={3}>
-              Subscribe to our mailing list to get our monthly newsletter –
-              you’ll be first to hear about partnership opportunities, new
-              releases, and product updates
+              We don’t mail out often, but when we do you’ll be the first to
+              hear about new blog posts and big releases of HASH and the Block
+              Protocol.
             </Typography>
             <form
               noValidate
@@ -199,7 +197,7 @@ export const Subscribe: FunctionComponent<BoxProps> = (props) => {
                   loading={loading}
                   sx={{ width: { xs: 1, md: "initial" } }}
                 >
-                  Join
+                  Get Updated
                 </Button>
               </Stack>
             </form>
@@ -229,7 +227,7 @@ const Community: FunctionComponent = () => {
           sx={{ fontWeight: 600, color: "gray.90", mb: { xs: 4, sm: 5 } }}
           align="center"
         >
-          Join our community of HASH developers
+          Join the HASH developer community
         </Typography>
         <Box>
           <Stack
@@ -293,9 +291,9 @@ export const PreFooter: FunctionComponent<{ subscribe?: boolean }> = ({
 }) => (
   <>
     {subscribe ? (
-      <Container component="section" sx={{ mb: 16, mt: 12 }}>
+      <Box component="section" sx={{ mb: 16, mt: 12 }}>
         <Subscribe />
-      </Container>
+      </Box>
     ) : null}
     <Community />
   </>
