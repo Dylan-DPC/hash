@@ -34,7 +34,9 @@ export const {
   getEntityType,
   getEntityTypeSubgraph,
   getEntityTypeIds,
-  createEntities,
+  createEntitiesActivity,
+  collectEntityInformation,
+  createEntitiesActivityUntagged,
 } = proxyActivities<ReturnType<typeof createGraphActivities>>({
   startToCloseTimeout: "180 second",
   retry: {
@@ -43,6 +45,9 @@ export const {
 });
 
 export type PartialDataType = {
+  $schema: "https://blockprotocol.org/types/modules/graph/0.3/schema/data-type";
+  $id: VersionedUrl;
+  kind: "dataType";
   title: string;
   description?: string;
   type: string;
@@ -55,6 +60,9 @@ export type PartialPropertyValues =
   | TypeSystemObject<ValueOrArray<PartialPropertyType>>
   | TypeSystemArray<OneOf<PartialPropertyValues>>;
 type PartialPropertyType = OneOf<PartialPropertyValues> & {
+  $schema: "https://blockprotocol.org/types/modules/graph/0.3/schema/property-type";
+  $id: VersionedUrl;
+  kind: "propertyType";
   title: string;
   description?: string;
 };
@@ -65,9 +73,11 @@ const partialPropertyTypeCache: PartialPropertyTypeMap = {};
 export interface PartialEntityType
   extends AllOf<PartialEntityType>,
     TypeSystemObject<ValueOrArray<PartialPropertyType>> {
+  $schema: "https://blockprotocol.org/types/modules/graph/0.3/schema/entity-type";
+  $id: VersionedUrl;
+  kind: "entityType";
   title: string;
   description?: string;
-  $id: VersionedUrl;
   additionalProperties: false;
 }
 type PartialEntityTypeMap = { [id: VersionedUrl]: PartialEntityType };
@@ -77,11 +87,14 @@ const getPartialDataType = async (
   dataTypeId: VersionedUrl,
 ): Promise<PartialDataType> => {
   if (!(dataTypeId in partialDataTypeCache)) {
-    const data_type = await getDataType({ dataTypeId });
+    const dataType = await getDataType({ dataTypeId });
     partialDataTypeCache[dataTypeId] = {
-      title: data_type.schema.title,
-      description: data_type.schema.description,
-      type: data_type.schema.type,
+      $schema: dataType.schema.$schema,
+      $id: dataType.schema.$id,
+      kind: dataType.schema.kind,
+      title: dataType.schema.title,
+      description: dataType.schema.description,
+      type: dataType.schema.type,
     };
   }
 
@@ -159,6 +172,9 @@ const getPartialPropertyType = async (
   if (!(propertyTypeId in partialPropertyTypeCache)) {
     const propertyType = await getPropertyType({ propertyTypeId });
     partialPropertyTypeCache[propertyTypeId] = {
+      $schema: propertyType.schema.$schema,
+      $id: propertyType.schema.$id,
+      kind: propertyType.schema.kind,
       title: propertyType.schema.title,
       description: propertyType.schema.description,
       oneOf: await convertOneOfValues(propertyType.schema.oneOf),
@@ -174,9 +190,11 @@ const getPartialEntityType = async (
   if (!(entityTypeId in partialEntityTypeCache)) {
     const entityType = await getEntityType({ entityTypeId });
     partialEntityTypeCache[entityTypeId] = {
+      $schema: entityType.schema.$schema,
+      $id: entityType.schema.$id,
+      kind: entityType.schema.kind,
       title: entityType.schema.title,
       description: entityType.schema.description,
-      $id: entityType.schema.$id,
       type: "object",
       allOf: entityType.schema.allOf
         ? await Promise.all(
@@ -184,20 +202,18 @@ const getPartialEntityType = async (
               return await getPartialEntityType(value.$ref);
             }),
           )
-        : [],
+        : undefined,
       properties: await convertPropertyObject(entityType.schema.properties),
-      additionalProperties: false,
     };
   }
 
   return partialEntityTypeCache[entityTypeId]!;
 };
 
-export async function createEntitiesForEntityTypes(params: {
+export async function createCollapsedEntityTypes(params: {
   entityTypeIds: VersionedUrl[];
-  prompt: string;
   depth: number;
-}): Promise<any> {
+}): Promise<PartialEntityType[]> {
   const allEntityTypeIds = await Promise.all(
     params.entityTypeIds.map(
       async (entityTypeId) =>
@@ -211,16 +227,102 @@ export async function createEntitiesForEntityTypes(params: {
     ),
   ).then((entityTypeIds) => entityTypeIds.flat());
 
+  const entityTypes = await Promise.all(
+    allEntityTypeIds.map(async (id) => await getPartialEntityType(id)),
+  );
+  console.log(JSON.stringify(entityTypes, null, 2));
+  return entityTypes;
+}
+
+export async function createEntities(
+  entityTypeIds: VersionedUrl[],
+  depth: number,
+  promptPath: string,
+  model: string,
+): Promise<any> {
+  const allEntityTypeIds = await Promise.all(
+    entityTypeIds.map(
+      async (entityTypeId) =>
+        await getEntityTypeIds({
+          entityTypeId,
+          graphResolveDepths: {
+            constrainsLinksOn: { outgoing: depth },
+            constrainsLinkDestinationsOn: { outgoing: depth },
+          },
+        }),
+    ),
+  ).then((ids) => ids.flat());
+
   console.log(allEntityTypeIds);
 
   const entityTypeSchemas = await Promise.all(
     allEntityTypeIds.map(async (id) => await getPartialEntityType(id)),
   );
-  console.log(JSON.stringify({ entityTypeSchemas }, null, 2));
 
-  const entities = await createEntities({
+  // const entityInformation = await Promise.all(
+  //   entityTypeSchemas
+  //     .filter((entityType) => Object.keys(entityType.properties).length > 0)
+  //     .map(
+  //       async (entityType) =>
+  //         `===\n${entityType.title}:\n${await collectEntityInformation({
+  //           entityType,
+  //           prompt: params.prompt,
+  //         })}`,
+  //     ),
+  // );
+
+  // console.log(entityInformation.join("\n\n"));
+
+  // const entityInformation = await Promise.all(
+  //   entityTypeSchemas.map(async (id) => await collectEntityInformation(id)),
+  // );
+
+  const entities = await createEntitiesActivity({
     entityTypeSchemas,
-    prompt: params.prompt,
+    promptPath,
+    model,
+  });
+
+  // const entities = await createEntitiesActivityUntagged({
+  //   entityTypeSchemas,
+  //   promptPath,
+  //   model,
+  // });
+
+  console.log(entities);
+
+  return entities;
+}
+
+export async function createEntitiesUntagged(
+  entityTypeIds: VersionedUrl[],
+  depth: number,
+  promptPath: string,
+  model: string,
+): Promise<any> {
+  const allEntityTypeIds = await Promise.all(
+    entityTypeIds.map(
+      async (entityTypeId) =>
+        await getEntityTypeIds({
+          entityTypeId,
+          graphResolveDepths: {
+            constrainsLinksOn: { outgoing: depth },
+            constrainsLinkDestinationsOn: { outgoing: depth },
+          },
+        }),
+    ),
+  ).then((ids) => ids.flat());
+
+  console.log(allEntityTypeIds);
+
+  const entityTypeSchemas = await Promise.all(
+    allEntityTypeIds.map(async (id) => await getPartialEntityType(id)),
+  );
+
+  const entities = await createEntitiesActivityUntagged({
+    entityTypeSchemas,
+    promptPath,
+    model,
   });
 
   console.log(entities);
